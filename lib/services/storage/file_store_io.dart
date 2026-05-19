@@ -14,6 +14,7 @@ FileStore createFileStore() => NativeFileStore();
 
 class NativeFileStore implements FileStore {
   Directory? _root;
+  String? _rootLabel;
 
   Directory get _readyRoot {
     final root = _root;
@@ -33,8 +34,10 @@ class NativeFileStore implements FileStore {
     if (configuredPath == null || configuredPath.trim().isEmpty) {
       final documents = await getApplicationDocumentsDirectory();
       _root = Directory(p.join(documents.path, 'Organote'));
+      _rootLabel = 'Organote (app documents)';
     } else {
       _root = Directory(configuredPath);
+      _rootLabel = '${p.basename(_root!.path)} (${_root!.path})';
     }
     await _readyRoot.create(recursive: true);
     await prefs.setString(_rootPreferenceKey, _readyRoot.path);
@@ -64,7 +67,7 @@ class NativeFileStore implements FileStore {
         message: 'Storage has not been initialized.',
       );
     }
-    return StorageStatus.available(rootLabel: root.path);
+    return StorageStatus.available(rootLabel: _rootLabel ?? root.path);
   }
 
   @override

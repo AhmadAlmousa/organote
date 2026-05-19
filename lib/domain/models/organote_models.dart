@@ -499,6 +499,7 @@ class LibrarySnapshot {
     this.notes = const <Note>[],
     this.templates = const <Template>[],
     this.categories = const <Category>[],
+    this.trash = const <TrashEntry>[],
     this.tags = const <String>[],
     this.complianceSummary = const ComplianceSummary(),
     this.syncStatus = const SyncStatus(),
@@ -507,6 +508,7 @@ class LibrarySnapshot {
   final List<Note> notes;
   final List<Template> templates;
   final List<Category> categories;
+  final List<TrashEntry> trash;
   final List<String> tags;
   final ComplianceSummary complianceSummary;
   final SyncStatus syncStatus;

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:path/path.dart' as p;
 
@@ -48,6 +49,8 @@ class LocalOrganoteRepository
       StreamController<LibrarySnapshot>.broadcast();
   final StreamController<ComplianceSummary> _complianceController =
       StreamController<ComplianceSummary>.broadcast();
+  final StreamController<List<TrashEntry>> _trashController =
+      StreamController<List<TrashEntry>>.broadcast();
 
   StreamSubscription<SyncStatus>? _syncSubscription;
   LibrarySnapshot? _snapshot;
@@ -72,10 +75,20 @@ class LocalOrganoteRepository
   }
 
   @override
+  Stream<List<TrashEntry>> watchTrash() async* {
+    final existing = _snapshot?.trash;
+    if (existing != null) {
+      yield existing;
+    }
+    yield* _trashController.stream;
+  }
+
+  @override
   Future<LibrarySnapshot> reload() async {
     await _fileStore.ensureStructure();
     final templates = await _loadTemplates();
     final notes = await _loadNotes();
+    final trash = await _readTrashEntries();
     final categories = await _buildCategories(notes);
     final tags = notes.expand((note) => note.tags).toSet().toList()..sort();
     final complianceSummary = _complianceService.scan(
@@ -86,6 +99,7 @@ class LocalOrganoteRepository
       notes: notes,
       templates: templates,
       categories: categories,
+      trash: trash,
       tags: tags,
       complianceSummary: complianceSummary,
       syncStatus: _syncStatus,
@@ -98,6 +112,16 @@ class LocalOrganoteRepository
   Future<Note?> getNote(String id) async {
     final snapshot = _snapshot ?? await reload();
     return snapshot.notes.where((note) => note.id == id).firstOrNull;
+  }
+
+  @override
+  Future<String> getRawSource(String id) async {
+    final note = await getNote(id);
+    final sourcePath = note?.sourcePath;
+    if (sourcePath == null) {
+      throw StateError('Cannot read raw source for unknown note $id.');
+    }
+    return _fileStore.readText(sourcePath);
   }
 
   @override
@@ -156,6 +180,16 @@ class LocalOrganoteRepository
     await _fileStore.writeText(existing.sourcePath!, source);
     await reload();
     return parsed;
+  }
+
+  @override
+  Future<void> setPinned(String noteId, bool value) async {
+    await _setNoteFlags(noteId, isPinned: value);
+  }
+
+  @override
+  Future<void> setFavorite(String noteId, bool value) async {
+    await _setNoteFlags(noteId, isFavorite: value);
   }
 
   @override
@@ -349,6 +383,19 @@ class LocalOrganoteRepository
   }
 
   @override
+  Future<Uint8List> readAssetBytes(String relativePath) async {
+    final path = normalizeRelativePath(relativePath);
+    if (!path.startsWith('assets/')) {
+      throw ArgumentError.value(
+        relativePath,
+        'relativePath',
+        'Asset paths must be under assets/.',
+      );
+    }
+    return Uint8List.fromList(await _fileStore.readBytes(path));
+  }
+
+  @override
   Future<ComplianceSummary> scanNow() async {
     final snapshot = await reload();
     return snapshot.complianceSummary;
@@ -406,6 +453,33 @@ class LocalOrganoteRepository
       );
     });
     return notes;
+  }
+
+  Future<void> _setNoteFlags(
+    String noteId, {
+    bool? isPinned,
+    bool? isFavorite,
+  }) async {
+    final note = await getNote(noteId);
+    if (note == null) {
+      return;
+    }
+    await saveStructuredNote(
+      NoteInput(
+        id: note.id,
+        title: note.title,
+        templateId: note.templateId,
+        templateName: note.templateName,
+        templateVersion: note.templateVersion,
+        icon: note.icon,
+        tags: note.tags,
+        categoryPath: note.categoryPath,
+        records: note.records,
+        body: note.body,
+        isPinned: isPinned ?? note.isPinned,
+        isFavorite: isFavorite ?? note.isFavorite,
+      ),
+    );
   }
 
   Future<List<Category>> _buildCategories(List<Note> notes) async {
@@ -542,6 +616,7 @@ class LocalOrganoteRepository
     _snapshot = snapshot;
     _libraryController.add(snapshot);
     _complianceController.add(snapshot.complianceSummary);
+    _trashController.add(snapshot.trash);
   }
 
   LibrarySnapshot _snapshotWith({SyncStatus? syncStatus}) {
@@ -550,6 +625,7 @@ class LocalOrganoteRepository
       notes: current.notes,
       templates: current.templates,
       categories: current.categories,
+      trash: current.trash,
       tags: current.tags,
       complianceSummary: current.complianceSummary,
       syncStatus: syncStatus ?? current.syncStatus,
@@ -562,6 +638,7 @@ class LocalOrganoteRepository
     await _syncSubscription?.cancel();
     await _libraryController.close();
     await _complianceController.close();
+    await _trashController.close();
   }
 }
 

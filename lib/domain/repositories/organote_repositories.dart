@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import '../models/organote_models.dart';
 
 class TemplateInput {
@@ -59,15 +61,23 @@ abstract interface class LibraryRepository {
 abstract interface class NoteRepository {
   Future<Note?> getNote(String id);
 
+  Future<String> getRawSource(String id);
+
   Future<Note> saveStructuredNote(NoteInput input);
 
   Future<Note> saveRawSource(String id, String source);
+
+  Future<void> setPinned(String noteId, bool value);
+
+  Future<void> setFavorite(String noteId, bool value);
 
   Future<void> softDeleteNote(String id);
 
   Future<void> restoreFromTrash(String trashEntryId);
 
   Future<void> purgeTrashEntry(String trashEntryId);
+
+  Stream<List<TrashEntry>> watchTrash();
 }
 
 abstract interface class TemplateRepository {
@@ -93,6 +103,8 @@ abstract interface class AssetRepository {
     required List<int> bytes,
     String? mediaType,
   });
+
+  Future<Uint8List> readAssetBytes(String relativePath);
 }
 
 abstract interface class ComplianceRepository {

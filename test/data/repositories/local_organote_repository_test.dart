@@ -75,7 +75,35 @@ void main() {
       expect(asset.relativePath, startsWith('assets/home-lab/'));
       expect(asset.relativePath, endsWith('rack-photo.png'));
       expect(store.hasSameBytes(asset.relativePath, [1, 2, 3]), isTrue);
+      expect(await repository.readAssetBytes(asset.relativePath), [1, 2, 3]);
+      expect(
+        () => repository.readAssetBytes('notes/not-an-asset.md'),
+        throwsArgumentError,
+      );
     });
+
+    test(
+      'reads raw source and toggles pin/favorite without caller rebuilding input',
+      () async {
+        final note = await repository.saveStructuredNote(
+          const NoteInput(
+            title: 'Toggle Me',
+            records: [
+              NoteRecord(label: 'Record', values: {'field': 'value'}),
+            ],
+          ),
+        );
+
+        expect(await repository.getRawSource(note.id), contains('# Toggle Me'));
+
+        await repository.setPinned(note.id, true);
+        await repository.setFavorite(note.id, true);
+        final updated = await repository.getNote(note.id);
+
+        expect(updated?.isPinned, isTrue);
+        expect(updated?.isFavorite, isTrue);
+      },
+    );
 
     test('soft deletes notes into trash and writes trash index', () async {
       final note = await repository.saveStructuredNote(
@@ -92,6 +120,7 @@ void main() {
               as List<dynamic>;
 
       expect(snapshot.notes, isEmpty);
+      expect(snapshot.trash.single.originalPath, 'notes/secret.md');
       expect(trashJson.single['originalPath'], 'notes/secret.md');
       expect(trashJson.single['trashPath'], startsWith('trash/notes/'));
     });

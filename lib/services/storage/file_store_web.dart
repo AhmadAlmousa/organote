@@ -81,7 +81,7 @@ class WebFileSystemAccessStore implements FileStore {
         message: 'Choose a real storage folder before using Organote.',
       );
     }
-    return StorageStatus.available(rootLabel: rootName);
+    return StorageStatus.available(rootLabel: '$rootName (chosen folder)');
   }
 
   @override
