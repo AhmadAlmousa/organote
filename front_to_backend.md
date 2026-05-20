@@ -6,7 +6,7 @@ contracts change.
 
 ## Status
 
-Phases 1 through 10 are shipped on the frontend. `flutter analyze` is clean and
+Phases 1 through 11 are shipped on the frontend. `flutter analyze` is clean and
 the current unit/widget suite passes.
 
 - Phase 1 (foundation): `lib/ui/theme/**` (OkLCH color tokens, motion curves,
@@ -69,6 +69,15 @@ the current unit/widget suite passes.
   before closing. The viewer's "Edit template" menu item now opens the shipped
   `TemplateBuilderScreen` for the attached template. Coverage added in
   `test/ui/note_viewer_screen_test.dart`.
+- Phase 11 (Web 3-pane shell): `lib/ui/app/web_shell.dart` now renders the
+  planned desktop layout: 64 px slim rail with theme/profile actions, a dense
+  list pane for notes/templates/settings, and an animated content pane. Notes
+  get search, category filters, inline pin/favorite toggles, and a selected
+  `NoteViewerScreen` in the right pane. Templates get a dense schema list plus
+  a right-pane template detail surface with field summaries, associated notes,
+  create-note, and edit-schema routes. Settings keeps the existing settings
+  screen in the content pane with a compact section summary list. Coverage added
+  in `test/ui/web_shell_test.dart`.
 
 ### Unilateral decisions taken (please review)
 
@@ -115,7 +124,7 @@ Acknowledgements:
 
 ## No pending requests at this time
 
-Frontend will post new requests here as they arise during Phases 11–12.
+Frontend will post new requests here as they arise during Phase 12.
 
 Known frontend-only caveat: Compliance issue ignore is session-local because
 `ComplianceRepository` has no persistent ignore/acknowledge command. No backend
