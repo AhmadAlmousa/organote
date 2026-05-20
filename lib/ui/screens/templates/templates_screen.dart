@@ -14,6 +14,7 @@ import '../../widgets/template_card.dart';
 import '../../widgets/wordmark.dart';
 import '../note_editor/note_editor_screen.dart';
 import '../note_viewer/note_viewer_screen.dart';
+import '../template_builder/template_builder_screen.dart';
 
 class TemplatesScreen extends ConsumerWidget {
   const TemplatesScreen({super.key});
@@ -157,14 +158,16 @@ class TemplatesScreen extends ConsumerWidget {
   }
 
   void _showBuilderPlaceholder(BuildContext context) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Template builder lands in Phase 5.')),
+    Navigator.of(context).push(
+      OrgOverlayRoute<void>(builder: (_) => const TemplateBuilderScreen()),
     );
   }
 
   void _showEditTemplatePlaceholder(BuildContext context, Template template) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('${template.name} editor lands in Phase 5.')),
+    Navigator.of(context).push(
+      OrgOverlayRoute<void>(
+        builder: (_) => TemplateBuilderScreen(templateId: template.id),
+      ),
     );
   }
 
