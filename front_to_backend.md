@@ -131,6 +131,11 @@ Phase 12 frontend follow-up: Compliance issue ignore now calls
 hide while the library stream reloads. The old session-local-only caveat is
 resolved.
 
+Phase 12 frontend follow-up: `NoteEditorScreen` now queues another structured
+save when edits happen while `saveStructuredNote` is still in flight, then drains
+that queued save before route pop completion. This covers the sync push-lock
+gotcha from `plan.md` on the frontend side and has widget regression coverage.
+
 ---
 
 ## Notes on the placeholder shell

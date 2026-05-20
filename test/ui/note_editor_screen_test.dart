@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -89,6 +90,43 @@ void main() {
       expect(fake.savedInputs, hasLength(1));
       expect(fake.savedInputs.single.title, 'Prod DB primary');
       expect(fake.savedInputs.single.templateId, 'server-login');
+    });
+
+    testWidgets('queues edits made while a save is in flight', (tester) async {
+      final fake = _BlockingNoteRepo();
+      await tester.pumpWidget(
+        _EditorHarness(
+          snapshot: makeSnapshot(),
+          noteRepo: fake,
+          templateId: template.id,
+        ),
+      );
+      await tester.pump();
+
+      final titleField = find.byKey(const Key('note-title-field'));
+      await tester.enterText(titleField, 'First draft');
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pump();
+
+      expect(fake.savedInputs, hasLength(1));
+      expect(fake.savedInputs.single.title, 'First draft');
+      expect(fake.pendingCount, 1);
+
+      await tester.enterText(titleField, 'Second draft');
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pump();
+
+      expect(fake.savedInputs, hasLength(1));
+
+      fake.completeNext();
+      await tester.pump();
+      await tester.pump();
+
+      expect(fake.savedInputs, hasLength(2));
+      expect(fake.savedInputs.last.title, 'Second draft');
+
+      fake.completeNext();
+      await tester.pump();
     });
 
     testWidgets('add record adds a draft and remove tears it down', (
@@ -310,6 +348,77 @@ class _FakeNoteRepo implements NoteRepository {
 
   @override
   Stream<List<TrashEntry>> watchTrash() => const Stream.empty();
+}
+
+class _BlockingNoteRepo implements NoteRepository {
+  final List<NoteInput> savedInputs = <NoteInput>[];
+  final List<_PendingSave> _pending = <_PendingSave>[];
+
+  int get pendingCount => _pending.length;
+
+  @override
+  Future<Note> saveStructuredNote(NoteInput input) {
+    savedInputs.add(input);
+    final completer = Completer<Note>();
+    _pending.add(_PendingSave(input, completer));
+    return completer.future;
+  }
+
+  void completeNext() {
+    final pending = _pending.removeAt(0);
+    pending.completer.complete(
+      Note(
+        id: pending.input.id ?? 'fake-${savedInputs.length}',
+        title: pending.input.title,
+        templateId: pending.input.templateId,
+        templateName: pending.input.templateName,
+        templateVersion: pending.input.templateVersion,
+        icon: pending.input.icon,
+        tags: pending.input.tags,
+        categoryPath: pending.input.categoryPath,
+        records: pending.input.records,
+        body: pending.input.body,
+        isPinned: pending.input.isPinned,
+        isFavorite: pending.input.isFavorite,
+        updatedAt: DateTime(2026, 5, 20, 12),
+      ),
+    );
+  }
+
+  @override
+  Future<Note?> getNote(String id) async => null;
+
+  @override
+  Future<String> getRawSource(String id) async => '';
+
+  @override
+  Future<Note> saveRawSource(String id, String source) async =>
+      throw UnimplementedError();
+
+  @override
+  Future<void> setPinned(String noteId, bool value) async {}
+
+  @override
+  Future<void> setFavorite(String noteId, bool value) async {}
+
+  @override
+  Future<void> softDeleteNote(String id) async {}
+
+  @override
+  Future<void> restoreFromTrash(String trashEntryId) async {}
+
+  @override
+  Future<void> purgeTrashEntry(String trashEntryId) async {}
+
+  @override
+  Stream<List<TrashEntry>> watchTrash() => const Stream.empty();
+}
+
+class _PendingSave {
+  const _PendingSave(this.input, this.completer);
+
+  final NoteInput input;
+  final Completer<Note> completer;
 }
 
 class _StubCategoryRepo implements CategoryRepository {

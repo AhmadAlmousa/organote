@@ -59,8 +59,10 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
   String? _errorMessage;
   DateTime? _lastSavedAt;
   Timer? _debounce;
+  Completer<void>? _flushCompleter;
   bool _seeded = false;
   bool _flushing = false;
+  bool _flushQueued = false;
   bool _titleFocused = false;
   Map<String, String> _fieldErrors = const <String, String>{};
 
@@ -426,6 +428,9 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
   }
 
   void _touch() {
+    if (_flushing || _status == _SaveStatus.saving) {
+      _flushQueued = true;
+    }
     if (_status != _SaveStatus.saving) {
       setState(() {
         _status = _SaveStatus.dirty;
@@ -449,40 +454,51 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
   }
 
   Future<void> _flush() async {
-    if (_flushing) return;
-    _flushing = true;
-    _debounce?.cancel();
-    final repo = ref.read(noteRepositoryProvider);
-    final input = _buildInput();
-    if (!_hasContent(input)) {
-      _flushing = false;
+    if (_flushing) {
+      _flushQueued = true;
+      await _flushCompleter?.future;
       return;
     }
-    setState(() => _status = _SaveStatus.saving);
+    final completer = Completer<void>();
+    _flushCompleter = completer;
+    _flushing = true;
     try {
-      final saved = await repo.saveStructuredNote(input);
-      if (!mounted) {
-        _flushing = false;
-        return;
-      }
-      setState(() {
-        _currentNoteId = saved.id;
-        _status = _SaveStatus.saved;
-        _lastSavedAt = saved.updatedAt ?? DateTime.now().toUtc();
-        _errorMessage = null;
-        _fieldErrors = const <String, String>{};
-      });
-    } catch (err) {
-      if (!mounted) {
-        _flushing = false;
-        return;
-      }
-      setState(() {
-        _status = _SaveStatus.error;
-        _errorMessage = err.toString();
-      });
+      do {
+        _flushQueued = false;
+        _debounce?.cancel();
+        final repo = ref.read(noteRepositoryProvider);
+        final input = _buildInput();
+        if (!_hasContent(input)) {
+          return;
+        }
+        setState(() => _status = _SaveStatus.saving);
+        try {
+          final saved = await repo.saveStructuredNote(input);
+          if (!mounted) {
+            return;
+          }
+          _debounce?.cancel();
+          setState(() {
+            _currentNoteId = saved.id;
+            _status = _flushQueued ? _SaveStatus.dirty : _SaveStatus.saved;
+            _lastSavedAt = saved.updatedAt ?? DateTime.now().toUtc();
+            _errorMessage = null;
+            _fieldErrors = const <String, String>{};
+          });
+        } catch (err) {
+          if (!mounted) {
+            return;
+          }
+          setState(() {
+            _status = _SaveStatus.error;
+            _errorMessage = err.toString();
+          });
+        }
+      } while (_flushQueued);
     } finally {
       _flushing = false;
+      _flushCompleter = null;
+      completer.complete();
     }
   }
 
@@ -1004,6 +1020,7 @@ class _TitleRow extends StatelessWidget {
                   : null,
             ),
             child: TextField(
+              key: const Key('note-title-field'),
               controller: titleController,
               focusNode: titleFocusNode,
               cursorColor: accent,
