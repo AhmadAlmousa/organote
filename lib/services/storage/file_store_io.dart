@@ -9,12 +9,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'file_store.dart';
 
 const _rootPreferenceKey = 'organote.storage.root';
+const _rootSelectedPreferenceKey = 'organote.storage.root.userSelected';
 
 FileStore createFileStore() => NativeFileStore();
 
 class NativeFileStore implements FileStore {
   Directory? _root;
   String? _rootLabel;
+  StorageStatus? _unavailableStatus;
 
   Directory get _readyRoot {
     final root = _root;
@@ -30,17 +32,39 @@ class NativeFileStore implements FileStore {
   @override
   Future<void> initialize({String? rootPath}) async {
     final prefs = await SharedPreferences.getInstance();
-    final configuredPath = rootPath ?? prefs.getString(_rootPreferenceKey);
-    if (configuredPath == null || configuredPath.trim().isEmpty) {
-      final documents = await getApplicationDocumentsDirectory();
-      _root = Directory(p.join(documents.path, 'Organote'));
-      _rootLabel = 'Organote (app documents)';
-    } else {
-      _root = Directory(configuredPath);
-      _rootLabel = '${p.basename(_root!.path)} (${_root!.path})';
+    final documents = await getApplicationDocumentsDirectory();
+    final legacyDefaultPath = p.join(documents.path, 'Organote');
+    final persistedPath = prefs.getString(_rootPreferenceKey);
+    final configuredPath = rootPath ?? persistedPath;
+    final wasUserSelected = prefs.getBool(_rootSelectedPreferenceKey) ?? false;
+    final hasExplicitPath = rootPath != null && rootPath.trim().isNotEmpty;
+
+    if (configuredPath == null ||
+        configuredPath.trim().isEmpty ||
+        (!hasExplicitPath &&
+            !wasUserSelected &&
+            p.equals(
+              p.normalize(configuredPath),
+              p.normalize(legacyDefaultPath),
+            ))) {
+      _root = null;
+      _rootLabel = null;
+      _unavailableStatus = const StorageStatus.unavailable(
+        reason: StorageUnavailableReason.rootNotSelected,
+        message: 'Choose a storage folder before using Organote.',
+      );
+      throw const StorageUnavailableException(
+        StorageUnavailableReason.rootNotSelected,
+        'Choose a storage folder before using Organote.',
+      );
     }
+
+    _root = Directory(configuredPath);
+    _rootLabel = '${p.basename(_root!.path)} (${_root!.path})';
+    _unavailableStatus = null;
     await _readyRoot.create(recursive: true);
     await prefs.setString(_rootPreferenceKey, _readyRoot.path);
+    await prefs.setBool(_rootSelectedPreferenceKey, true);
     await ensureStructure();
   }
 
@@ -62,10 +86,11 @@ class NativeFileStore implements FileStore {
   Future<StorageStatus> getStatus() async {
     final root = _root;
     if (root == null) {
-      return const StorageStatus.unavailable(
-        reason: StorageUnavailableReason.notInitialized,
-        message: 'Storage has not been initialized.',
-      );
+      return _unavailableStatus ??
+          const StorageStatus.unavailable(
+            reason: StorageUnavailableReason.notInitialized,
+            message: 'Storage has not been initialized.',
+          );
     }
     return StorageStatus.available(rootLabel: _rootLabel ?? root.path);
   }

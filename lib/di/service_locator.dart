@@ -20,7 +20,7 @@ Future<void> configureDependencies({FileStore? fileStore}) async {
     await store.initialize();
   } on StorageUnavailableException {
     // Web intentionally remains unavailable until a user gesture chooses a
-    // directory. Native platforms initialize a default app documents folder.
+    // directory. Native platforms use the same explicit first-run storage gate.
   }
 
   final syncRepository = GoogleDriveSyncRepository(fileStore: store);

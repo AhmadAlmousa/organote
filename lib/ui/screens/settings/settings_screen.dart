@@ -73,11 +73,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         message: 'Drive connected',
         icon: Icons.cloud_done_rounded,
       );
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
       showOrgToast(
         context,
-        message: 'Drive connection failed',
+        message: 'Drive connection failed: ${_compactError(error)}',
         icon: Icons.cloud_off_rounded,
         background: OrgPaletteScope.of(context).danger,
       );
@@ -294,6 +294,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       ),
     );
   }
+}
+
+String _compactError(Object error) {
+  final message = error.toString();
+  if (message.length <= 96) {
+    return message;
+  }
+  return '${message.substring(0, 93)}...';
 }
 
 class _SettingsHeader extends StatelessWidget {

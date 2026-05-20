@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:extension_google_sign_in_as_googleapis_auth/extension_google_sign_in_as_googleapis_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:googleapis/drive/v3.dart' as drive;
 import 'package:googleapis_auth/googleapis_auth.dart' as google_auth;
@@ -14,6 +15,18 @@ import 'sync_ledger_store.dart';
 import 'sync_models.dart';
 import 'sync_reconciler.dart';
 
+const _googleSignInClientId = String.fromEnvironment(
+  'GOOGLE_SIGN_IN_CLIENT_ID',
+);
+const _googleSignInServerClientId = String.fromEnvironment(
+  'GOOGLE_SIGN_IN_SERVER_CLIENT_ID',
+);
+
+String? _blankToNull(String? value) {
+  final normalized = value?.trim();
+  return normalized == null || normalized.isEmpty ? null : normalized;
+}
+
 class GoogleDriveSyncRepository implements SyncRepository {
   GoogleDriveSyncRepository({
     required FileStore fileStore,
@@ -21,11 +34,17 @@ class GoogleDriveSyncRepository implements SyncRepository {
     SyncLedgerStore? ledgerStore,
     RemoteFileProvider? remoteFileProvider,
     GoogleSignIn? googleSignIn,
+    String? clientId,
+    String? serverClientId,
   }) : _fileStore = fileStore,
        _reconciler = reconciler,
        _ledgerStore = ledgerStore ?? SyncLedgerStore(fileStore),
        _remoteProvider = remoteFileProvider,
-       _googleSignIn = googleSignIn ?? GoogleSignIn.instance {
+       _googleSignIn = googleSignIn ?? GoogleSignIn.instance,
+       _clientId = _blankToNull(clientId ?? _googleSignInClientId),
+       _serverClientId = _blankToNull(
+         serverClientId ?? _googleSignInServerClientId,
+       ) {
     _statusController.add(const SyncStatus());
   }
 
@@ -35,6 +54,8 @@ class GoogleDriveSyncRepository implements SyncRepository {
   final SyncReconciler _reconciler;
   final SyncLedgerStore _ledgerStore;
   final GoogleSignIn _googleSignIn;
+  final String? _clientId;
+  final String? _serverClientId;
   final StreamController<SyncStatus> _statusController =
       StreamController<SyncStatus>.broadcast();
 
@@ -53,21 +74,33 @@ class GoogleDriveSyncRepository implements SyncRepository {
     _statusController.add(
       const SyncStatus(phase: SyncPhase.signingIn, message: 'Signing in'),
     );
-    await _initializeGoogleSignIn();
-    final account = await _googleSignIn.authenticate(scopeHint: scopes);
-    final authorization =
-        await account.authorizationClient.authorizationForScopes(scopes) ??
-        await account.authorizationClient.authorizeScopes(scopes);
-    _authClient = authorization.authClient(scopes: scopes);
-    _driveApi = drive.DriveApi(_authClient!);
-    _remoteProvider ??= GoogleDriveRemoteFileProvider(_driveApi!);
-    _statusController.add(
-      SyncStatus(
-        phase: SyncPhase.idle,
-        signedIn: true,
-        message: 'Google Drive connected',
-      ),
-    );
+    try {
+      await _initializeGoogleSignIn();
+      if (!_googleSignIn.supportsAuthenticate()) {
+        throw UnsupportedError(
+          'Google Drive sync sign-in on this platform needs the Google-rendered sign-in button.',
+        );
+      }
+      final account = await _googleSignIn.authenticate(scopeHint: scopes);
+      final authorization =
+          await account.authorizationClient.authorizationForScopes(scopes) ??
+          await account.authorizationClient.authorizeScopes(scopes);
+      _authClient = authorization.authClient(scopes: scopes);
+      _driveApi = drive.DriveApi(_authClient!);
+      _remoteProvider ??= GoogleDriveRemoteFileProvider(_driveApi!);
+      _statusController.add(
+        SyncStatus(
+          phase: SyncPhase.idle,
+          signedIn: true,
+          message: 'Google Drive connected',
+        ),
+      );
+    } catch (error) {
+      _statusController.add(
+        SyncStatus(phase: SyncPhase.error, message: _syncErrorMessage(error)),
+      );
+      rethrow;
+    }
   }
 
   @override
@@ -159,7 +192,10 @@ class GoogleDriveSyncRepository implements SyncRepository {
     if (_initialized) {
       return;
     }
-    await _googleSignIn.initialize();
+    await _googleSignIn.initialize(
+      clientId: _clientId,
+      serverClientId: kIsWeb ? null : _serverClientId ?? _clientId,
+    );
     _initialized = true;
   }
 
@@ -278,4 +314,15 @@ class GoogleDriveSyncRepository implements SyncRepository {
     unawaited(_statusController.close());
     _authClient?.close();
   }
+}
+
+String _syncErrorMessage(Object error) {
+  final raw = error.toString();
+  if (raw.contains('serverClientId') || raw.contains('clientConfiguration')) {
+    return 'Google Sign-In is missing or rejecting the OAuth client ID.';
+  }
+  if (raw.length <= 140) {
+    return raw;
+  }
+  return '${raw.substring(0, 137)}...';
 }
