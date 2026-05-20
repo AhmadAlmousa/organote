@@ -1,6 +1,8 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:organote/domain/models/models.dart';
 import 'package:organote/services/storage/memory_file_store.dart';
 import 'package:organote/services/sync/google_drive_sync_repository.dart';
@@ -217,6 +219,34 @@ void main() {
       expect(latest?.phase, SyncPhase.error);
       expect(latest?.message, contains('not connected'));
     });
+
+    test(
+      'explains missing Android web client ID before plugin sign-in',
+      () async {
+        debugDefaultTargetPlatformOverride = TargetPlatform.android;
+        addTearDown(() => debugDefaultTargetPlatformOverride = null);
+        final store = MemoryFileStore();
+        await store.initialize();
+        final repository = GoogleDriveSyncRepository(fileStore: store);
+
+        await expectLater(
+          repository.signInGoogleDrive(),
+          throwsA(
+            isA<GoogleSignInException>()
+                .having(
+                  (error) => error.code,
+                  'code',
+                  GoogleSignInExceptionCode.clientConfigurationError,
+                )
+                .having(
+                  (error) => error.description,
+                  'description',
+                  contains('Web OAuth client ID'),
+                ),
+          ),
+        );
+      },
+    );
   });
 }
 

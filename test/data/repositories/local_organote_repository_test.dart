@@ -532,12 +532,15 @@ void main() {
         expect(note.title, 'Smith Family');
         expect(note.categoryPath, 'household/identity');
         expect(note.records.map((record) => record.label), [
-          'Person-1',
-          'Person-2',
+          'Name: Ahmad',
+          'Name: Sarah',
         ]);
         expect(note.records[0].values['name'], 'Ahmad');
         expect(note.records[1].values['name'], 'Sarah');
         expect(note.records[1].values['dob'], '01-01-2000 | 24-09-1420 H');
+        final raw = await store.readText(saved.sourcePath!);
+        expect(raw, contains('## Name: Ahmad'));
+        expect(raw, isNot(contains('- **Name**: Ahmad')));
         await reopened.dispose();
       },
     );

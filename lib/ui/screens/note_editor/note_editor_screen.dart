@@ -727,7 +727,9 @@ class _RecordDraft {
   });
 
   factory _RecordDraft.empty(Template? template, {required int index}) {
-    final initialLabel = labelFor(template, index);
+    final initialLabel = template == null || template.fields.isEmpty
+        ? labelFor(template, index)
+        : '';
     final labelCtl = TextEditingController(text: initialLabel);
     final fieldCtls = <String, TextEditingController>{};
     if (template != null) {
@@ -748,15 +750,20 @@ class _RecordDraft {
     final extras = <String, String>{};
     if (template != null) {
       for (final field in template.fields) {
-        final value =
-            record.values[field.label] ?? record.values[field.id] ?? '';
+        final value = _fieldValue(record.values, field);
         fieldCtls[field.id] = TextEditingController(text: value);
       }
-      final templateLabels = template.fields.map((f) => f.label).toSet();
-      final templateIds = template.fields.map((f) => f.id).toSet();
+      final templateKeys = <String>{
+        for (final field in template.fields) ...[
+          field.label,
+          field.id,
+          _normalizedFieldKey(field.label),
+          _normalizedFieldKey(field.id),
+        ],
+      };
       for (final entry in record.values.entries) {
-        if (!templateLabels.contains(entry.key) &&
-            !templateIds.contains(entry.key)) {
+        if (!templateKeys.contains(entry.key) &&
+            !templateKeys.contains(_normalizedFieldKey(entry.key))) {
           extras[entry.key] = entry.value;
         }
       }
@@ -786,9 +793,6 @@ class _RecordDraft {
   String defaultLabel;
 
   NoteRecord toRecord(Template? template, {required int index}) {
-    final label = labelController.text.trim().isEmpty
-        ? labelFor(template, index)
-        : labelController.text.trim();
     final values = <String, String>{};
     if (template != null) {
       for (final field in template.fields) {
@@ -805,7 +809,26 @@ class _RecordDraft {
         }
       }
     }
+    final label =
+        _derivedTemplateLabel(template, values) ??
+        (labelController.text.trim().isEmpty
+            ? labelFor(template, index)
+            : labelController.text.trim());
     return NoteRecord(id: id, label: label, values: values);
+  }
+
+  String? previewLabel(Template? template) {
+    if (template == null || template.fields.isEmpty) {
+      return null;
+    }
+    final values = <String, String>{};
+    for (final field in template.fields) {
+      final value = fieldControllers[field.id]?.text ?? '';
+      if (value.trim().isNotEmpty) {
+        values[field.label] = value;
+      }
+    }
+    return _derivedTemplateLabel(template, values);
   }
 
   void dispose() {
@@ -814,6 +837,36 @@ class _RecordDraft {
       c.dispose();
     }
   }
+}
+
+String _fieldValue(Map<String, String> values, TemplateField field) {
+  return values[field.label] ??
+      values[field.id] ??
+      values[_normalizedFieldKey(field.label)] ??
+      values[_normalizedFieldKey(field.id)] ??
+      '';
+}
+
+String? _derivedTemplateLabel(Template? template, Map<String, String> values) {
+  if (template == null || template.fields.isEmpty) {
+    return null;
+  }
+  final first = template.fields.first;
+  final value = _fieldValue(values, first).trim();
+  if (value.isEmpty || value.contains('\n') || value.contains('\r')) {
+    return null;
+  }
+  return '${first.label}: $value';
+}
+
+String _normalizedFieldKey(String value) {
+  return value
+      .replaceAll('*', '')
+      .replaceAll('-', ' ')
+      .replaceAll('_', ' ')
+      .trim()
+      .toLowerCase()
+      .replaceAll(RegExp(r'\s+'), ' ');
 }
 
 class _EditorAppBar extends StatelessWidget {
@@ -1191,6 +1244,9 @@ class _RecordEditorCardState extends State<_RecordEditorCard> {
   @override
   Widget build(BuildContext context) {
     final palette = OrgPaletteScope.of(context);
+    final usesTemplateFields =
+        widget.template != null && widget.template!.fields.isNotEmpty;
+    final previewLabel = widget.record.previewLabel(widget.template);
     return Container(
       decoration: BoxDecoration(
         color: palette.surface,
@@ -1225,32 +1281,45 @@ class _RecordEditorCardState extends State<_RecordEditorCard> {
                 ),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: TextField(
-                    controller: widget.record.labelController,
-                    focusNode: _labelFocus,
-                    cursorColor: widget.accent,
-                    onChanged: (_) => widget.onTouched(),
-                    style: TextStyle(
-                      color: palette.text,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 15,
-                      letterSpacing: -0.01,
-                    ),
-                    decoration: InputDecoration(
-                      hintText: widget.record.defaultLabel,
-                      hintStyle: TextStyle(
-                        color: _labelFocused
-                            ? palette.textSecondary
-                            : palette.textTertiary,
-                        fontWeight: FontWeight.w700,
-                      ),
-                      isCollapsed: true,
-                      border: InputBorder.none,
-                      enabledBorder: InputBorder.none,
-                      focusedBorder: InputBorder.none,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 6),
-                    ),
-                  ),
+                  child: usesTemplateFields
+                      ? Text(
+                          previewLabel ?? '',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: palette.text,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 15,
+                          ),
+                        )
+                      : TextField(
+                          controller: widget.record.labelController,
+                          focusNode: _labelFocus,
+                          cursorColor: widget.accent,
+                          onChanged: (_) => widget.onTouched(),
+                          style: TextStyle(
+                            color: palette.text,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 15,
+                            letterSpacing: -0.01,
+                          ),
+                          decoration: InputDecoration(
+                            hintText: widget.record.defaultLabel,
+                            hintStyle: TextStyle(
+                              color: _labelFocused
+                                  ? palette.textSecondary
+                                  : palette.textTertiary,
+                              fontWeight: FontWeight.w700,
+                            ),
+                            isCollapsed: true,
+                            border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            contentPadding: const EdgeInsets.symmetric(
+                              vertical: 6,
+                            ),
+                          ),
+                        ),
                 ),
                 IconButton(
                   tooltip: _expanded ? 'Collapse' : 'Expand',

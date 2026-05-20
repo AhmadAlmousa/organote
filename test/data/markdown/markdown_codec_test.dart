@@ -77,6 +77,47 @@ void main() {
       expect(decoded.body, 'Freeform **markdown** body.');
     });
 
+    test('uses first templated value as record heading', () {
+      const note = Note(
+        id: 'booklet-note',
+        title: 'Booklets',
+        templateId: 'booklet',
+        templateName: 'Booklet',
+        templateVersion: 1,
+        records: [
+          NoteRecord(
+            label: 'Booklet 1',
+            values: {'Person Name': 'John', 'ID': '123'},
+          ),
+        ],
+      );
+
+      final source = codec.encodeNote(note);
+      final decoded = codec.decodeNote(source);
+
+      expect(source, contains('## Person Name: John'));
+      expect(source, isNot(contains('- **Person Name**: John')));
+      expect(source, contains('- **ID**: 123'));
+      expect(decoded.records.single.label, 'Person Name: John');
+      expect(decoded.records.single.values['person name'], 'John');
+      expect(decoded.records.single.values['id'], '123');
+    });
+
+    test('keeps freeform record labels and value bullets', () {
+      const note = Note(
+        id: 'freeform-record',
+        title: 'Freeform',
+        records: [
+          NoteRecord(label: 'Record 1', values: {'Person Name': 'John'}),
+        ],
+      );
+
+      final source = codec.encodeNote(note);
+
+      expect(source, contains('## Record 1'));
+      expect(source, contains('- **Person Name**: John'));
+    });
+
     test('parses legacy sample date type rows without losing date type', () {
       const source = '''
 # Template-Name-Goes-Here

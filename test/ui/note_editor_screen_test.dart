@@ -59,7 +59,7 @@ void main() {
       await tester.pump();
 
       expect(find.text('Server Login'), findsWidgets);
-      expect(find.text('Server Login 1'), findsWidgets);
+      expect(find.text('Server Login 1'), findsNothing);
       expect(find.text('HOST'), findsOneWidget);
       expect(find.text('PASSWORD'), findsOneWidget);
       expect(find.text('ENVIRONMENT'), findsOneWidget);
@@ -145,16 +145,19 @@ void main() {
       );
       await tester.pump();
 
-      expect(find.text('Server Login 1'), findsWidgets);
-      expect(find.text('Server Login 2'), findsNothing);
+      expect(find.text('#1'), findsOneWidget);
+      expect(find.text('#2'), findsNothing);
+      expect(find.text('Server Login 1'), findsNothing);
 
       final addButton = find.text('Add server login record');
       await tester.ensureVisible(addButton);
       await tester.tap(addButton);
       await tester.pumpAndSettle();
 
-      expect(find.text('Server Login 1'), findsWidgets);
-      expect(find.text('Server Login 2'), findsWidgets);
+      expect(find.text('#1'), findsOneWidget);
+      expect(find.text('#2'), findsOneWidget);
+      expect(find.text('Server Login 1'), findsNothing);
+      expect(find.text('Server Login 2'), findsNothing);
 
       final removeButtons = find.byTooltip('Remove record');
       expect(removeButtons, findsNWidgets(2));
@@ -162,7 +165,39 @@ void main() {
       await tester.tap(removeButtons.last);
       await tester.pumpAndSettle();
 
-      expect(find.text('Server Login 2'), findsNothing);
+      expect(find.text('#2'), findsNothing);
+    });
+
+    testWidgets('templated records save first field as derived label', (
+      tester,
+    ) async {
+      final fake = _FakeNoteRepo();
+      await tester.pumpWidget(
+        _EditorHarness(
+          snapshot: makeSnapshot(),
+          noteRepo: fake,
+          templateId: template.id,
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('Server Login 1'), findsNothing);
+
+      await tester.enterText(
+        find.widgetWithText(TextField, '192.168.1.1'),
+        '10.0.0.5',
+      );
+      await tester.pump();
+
+      expect(find.text('Host: 10.0.0.5'), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pump();
+
+      expect(fake.savedInputs, isNotEmpty);
+      final record = fake.savedInputs.last.records.single;
+      expect(record.label, 'Host: 10.0.0.5');
+      expect(record.values['Host'], '10.0.0.5');
     });
 
     testWidgets('Done flushes any pending edits before popping', (

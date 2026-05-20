@@ -87,10 +87,14 @@ class MarkdownCodec {
       ..writeln('# ${note.title}')
       ..writeln();
     for (final record in note.records) {
+      final heading = _headingForRecord(note, record);
       buffer
-        ..writeln('## ${record.label}')
+        ..writeln('## ${heading.title}')
         ..writeln('- **record id**: ${record.id ?? ''}');
       for (final entry in record.values.entries) {
+        if (entry.key == heading.omittedValueKey) {
+          continue;
+        }
         buffer.writeln('- **${entry.key}**: ${entry.value}');
       }
       buffer.writeln();
@@ -135,6 +139,9 @@ class MarkdownCodec {
     final metadata = _rowMap(metadataSection.rows);
     final records = <NoteRecord>[];
     var body = '';
+    final hasTemplate =
+        _emptyToNull(metadata['template id']) != null ||
+        _emptyToNull(metadata['template name']) != null;
 
     for (final section in _sectionsOf(content)) {
       if (_sameKey(section.title, 'body')) {
@@ -144,7 +151,14 @@ class MarkdownCodec {
       if (_sameKey(section.title, 'metadata')) {
         continue;
       }
-      final values = _rowMap(section.rows);
+      final values = <String, String>{};
+      final headingRow = hasTemplate
+          ? _MarkdownRow.tryParseHeading(section.title)
+          : null;
+      if (headingRow != null) {
+        values[_normalizeKey(headingRow.key)] = headingRow.value.trim();
+      }
+      values.addAll(_rowMap(section.rows));
       final recordId = _emptyToNull(values.remove('record id'));
       records.add(
         NoteRecord(id: recordId, label: section.title, values: values),
@@ -171,6 +185,21 @@ class MarkdownCodec {
       createdAt: _parseDate(metadata['created at']),
       updatedAt: _parseDate(metadata['updated at']) ?? updatedAt,
     );
+  }
+
+  static _RecordHeading _headingForRecord(Note note, NoteRecord record) {
+    final canDeriveFromFirstValue =
+        (note.templateId != null || note.templateName != null) &&
+        record.values.isNotEmpty;
+    if (!canDeriveFromFirstValue) {
+      return _RecordHeading(record.label);
+    }
+    final first = record.values.entries.first;
+    final value = first.value.trim();
+    if (value.isEmpty || value.contains('\n') || value.contains('\r')) {
+      return _RecordHeading(record.label);
+    }
+    return _RecordHeading('${first.key}: $value', omittedValueKey: first.key);
   }
 
   static TemplateField _fieldFromSection(_MarkdownSection section) {
@@ -341,6 +370,21 @@ class _MarkdownRow {
     }
     return _MarkdownRow(match.group(1)!.trim(), match.group(2)!.trim());
   }
+
+  static _MarkdownRow? tryParseHeading(String heading) {
+    final match = RegExp(r'^\s*([^:]+?)\s*:\s*(.+?)\s*$').firstMatch(heading);
+    if (match == null) {
+      return null;
+    }
+    return _MarkdownRow(match.group(1)!.trim(), match.group(2)!.trim());
+  }
+}
+
+class _RecordHeading {
+  const _RecordHeading(this.title, {this.omittedValueKey});
+
+  final String title;
+  final String? omittedValueKey;
 }
 
 extension _FirstOrNull<T> on Iterable<T> {

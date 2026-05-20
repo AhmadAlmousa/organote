@@ -19,6 +19,9 @@ import 'sync_reconciler.dart';
 const _googleSignInClientId = String.fromEnvironment(
   'GOOGLE_SIGN_IN_CLIENT_ID',
 );
+const _googleSignInWebClientId = String.fromEnvironment(
+  'GOOGLE_SIGN_IN_WEB_CLIENT_ID',
+);
 const _googleSignInServerClientId = String.fromEnvironment(
   'GOOGLE_SIGN_IN_SERVER_CLIENT_ID',
 );
@@ -61,22 +64,35 @@ class GoogleDriveSyncRepository implements SyncRepository {
     RemoteFileProvider? remoteFileProvider,
     GoogleSignIn? googleSignIn,
     String? clientId,
+    String? webClientId,
     String? serverClientId,
   }) : _fileStore = fileStore,
        _reconciler = reconciler,
        _ledgerStore = ledgerStore ?? SyncLedgerStore(fileStore),
        _remoteProvider = remoteFileProvider,
        _googleSignIn = googleSignIn ?? GoogleSignIn.instance,
-       _clientId = _configuredValue(
-         key: 'GOOGLE_SIGN_IN_CLIENT_ID',
-         defineValue: _googleSignInClientId,
-         override: clientId,
-       ),
-       _serverClientId = _configuredValue(
-         key: 'GOOGLE_SIGN_IN_SERVER_CLIENT_ID',
-         defineValue: _googleSignInServerClientId,
-         override: serverClientId,
-       ) {
+       _clientId =
+           _configuredValue(
+             key: 'GOOGLE_SIGN_IN_WEB_CLIENT_ID',
+             defineValue: _googleSignInWebClientId,
+             override: webClientId,
+           ) ??
+           _configuredValue(
+             key: 'GOOGLE_SIGN_IN_CLIENT_ID',
+             defineValue: _googleSignInClientId,
+             override: clientId,
+           ),
+       _serverClientId =
+           _configuredValue(
+             key: 'GOOGLE_SIGN_IN_SERVER_CLIENT_ID',
+             defineValue: _googleSignInServerClientId,
+             override: serverClientId,
+           ) ??
+           _configuredValue(
+             key: 'GOOGLE_SIGN_IN_WEB_CLIENT_ID',
+             defineValue: _googleSignInWebClientId,
+             override: webClientId,
+           ) {
     _statusController.add(const SyncStatus());
   }
 
@@ -228,6 +244,16 @@ class GoogleDriveSyncRepository implements SyncRepository {
         ? _clientId
         : null;
     final serverClientId = kIsWeb ? null : _serverClientId ?? _clientId;
+    if (!kIsWeb &&
+        defaultTargetPlatform == TargetPlatform.android &&
+        serverClientId == null) {
+      throw const GoogleSignInException(
+        code: GoogleSignInExceptionCode.clientConfigurationError,
+        description:
+            'Android Google Sign-In needs the Web OAuth client ID as serverClientId. '
+            'Set GOOGLE_SIGN_IN_WEB_CLIENT_ID or GOOGLE_SIGN_IN_CLIENT_ID in .env.',
+      );
+    }
     await _googleSignIn.initialize(
       clientId: clientId,
       serverClientId: serverClientId,

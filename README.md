@@ -154,12 +154,17 @@ https://www.googleapis.com/auth/drive.file
 
 6. Create an Android OAuth client for the app package name.
 7. Create a Web application OAuth client in the same project.
-8. Add the web OAuth client ID to `.env`:
+8. Add that Web application OAuth **Client ID** to `.env`:
 
 ```env
-GOOGLE_SIGN_IN_CLIENT_ID=<WEB_CLIENT_ID>
+GOOGLE_SIGN_IN_WEB_CLIENT_ID=<WEB_CLIENT_ID>
+GOOGLE_SIGN_IN_CLIENT_ID=
 GOOGLE_SIGN_IN_SERVER_CLIENT_ID=
 ```
+
+Google Cloud Console labels this value as `Client ID`. The Android
+`google_sign_in` plugin uses that same Web OAuth client ID as its
+`serverClientId`.
 
 After `.env` is configured, plain run and build commands will read it:
 
@@ -171,7 +176,8 @@ After `.env` is configured, plain run and build commands will read it:
 If you use a separate server client ID, set it too:
 
 ```env
-GOOGLE_SIGN_IN_CLIENT_ID=<WEB_CLIENT_ID>
+GOOGLE_SIGN_IN_WEB_CLIENT_ID=<WEB_CLIENT_ID>
+GOOGLE_SIGN_IN_CLIENT_ID=
 GOOGLE_SIGN_IN_SERVER_CLIENT_ID=<SERVER_CLIENT_ID>
 ```
 
@@ -180,7 +186,8 @@ keys, but do not commit real project-specific IDs, private keystores,
 service-account files, signing passwords, or other secrets.
 
 This Android project does not currently include `google-services.json`, so the
-web OAuth client ID must be available to the app as `GOOGLE_SIGN_IN_CLIENT_ID`.
+web OAuth client ID must be available to the app as
+`GOOGLE_SIGN_IN_WEB_CLIENT_ID` or `GOOGLE_SIGN_IN_CLIENT_ID`.
 The Android OAuth client in Google Cloud must also match the package name
 (`com.example.organote` by default) and the SHA-1 for the build you are running.
 
