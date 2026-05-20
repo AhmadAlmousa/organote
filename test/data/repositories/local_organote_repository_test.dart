@@ -227,47 +227,37 @@ void main() {
       },
     );
 
-    test(
-      'moves notes and color metadata when a category is renamed',
-      () async {
-        await repository.saveCategory(
-          const Category(
-            path: 'infra/lab',
-            name: 'lab',
-            parentPath: 'infra',
-            colorHex: '#abcdef',
-          ),
-        );
-        final note = await repository.saveStructuredNote(
-          const NoteInput(
-            title: 'Inside Lab',
-            categoryPath: 'infra/lab',
-            records: [NoteRecord(label: 'Record', values: {})],
-          ),
-        );
+    test('moves notes and color metadata when a category is renamed', () async {
+      await repository.saveCategory(
+        const Category(
+          path: 'infra/lab',
+          name: 'lab',
+          parentPath: 'infra',
+          colorHex: '#abcdef',
+        ),
+      );
+      final note = await repository.saveStructuredNote(
+        const NoteInput(
+          title: 'Inside Lab',
+          categoryPath: 'infra/lab',
+          records: [NoteRecord(label: 'Record', values: {})],
+        ),
+      );
 
-        await repository.moveCategory('infra/lab', 'platform/lab');
-        final snapshot = await repository.reload();
+      await repository.moveCategory('infra/lab', 'platform/lab');
+      final snapshot = await repository.reload();
 
-        expect(await store.exists(note.sourcePath!), isFalse);
-        expect(
-          await store.exists('notes/platform/lab/inside-lab.md'),
-          isTrue,
-        );
-        final moved = snapshot.categories.firstWhere(
-          (category) => category.path == 'platform/lab',
-        );
-        expect(moved.colorHex, '#abcdef');
-      },
-    );
+      expect(await store.exists(note.sourcePath!), isFalse);
+      expect(await store.exists('notes/platform/lab/inside-lab.md'), isTrue);
+      final moved = snapshot.categories.firstWhere(
+        (category) => category.path == 'platform/lab',
+      );
+      expect(moved.colorHex, '#abcdef');
+    });
 
     test('soft deletes a category into trash and clears its color', () async {
       await repository.saveCategory(
-        const Category(
-          path: 'infra',
-          name: 'infra',
-          colorHex: '#112233',
-        ),
+        const Category(path: 'infra', name: 'infra', colorHex: '#112233'),
       );
       await repository.saveStructuredNote(
         const NoteInput(
@@ -424,9 +414,11 @@ void main() {
         expect(ignoredIssue.ignored, isTrue);
         expect(afterIgnore.activeCount, isZero);
 
-        final persisted = jsonDecode(
-          await store.readText('.organote/compliance_ignores.json'),
-        ) as List<dynamic>;
+        final persisted =
+            jsonDecode(
+                  await store.readText('.organote/compliance_ignores.json'),
+                )
+                as List<dynamic>;
         expect(persisted, contains(drift.id));
 
         // Fresh repository instance must still see the persisted ignore.
@@ -545,10 +537,7 @@ void main() {
         ]);
         expect(note.records[0].values['name'], 'Ahmad');
         expect(note.records[1].values['name'], 'Sarah');
-        expect(
-          note.records[1].values['dob'],
-          '01-01-2000 | 24-09-1420 H',
-        );
+        expect(note.records[1].values['dob'], '01-01-2000 | 24-09-1420 H');
         await reopened.dispose();
       },
     );
@@ -566,7 +555,8 @@ void main() {
           ),
         );
 
-        final newSource = '''
+        final newSource =
+            '''
 # Editable Note
 
 ## Record
@@ -593,15 +583,12 @@ void main() {
       },
     );
 
-    test(
-      'saveRawSource throws StateError for an unknown note id',
-      () async {
-        await repository.reload();
-        expect(
-          () => repository.saveRawSource('does-not-exist', '# anything'),
-          throwsStateError,
-        );
-      },
-    );
+    test('saveRawSource throws StateError for an unknown note id', () async {
+      await repository.reload();
+      expect(
+        () => repository.saveRawSource('does-not-exist', '# anything'),
+        throwsStateError,
+      );
+    });
   });
 }

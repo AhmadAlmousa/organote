@@ -220,18 +220,15 @@ void main() {
       );
     });
 
-    test(
-      'allows free-form dropdown values when no options are configured',
-      () {
-        const field = TemplateField(
-          id: 'free',
-          label: 'Free',
-          type: TemplateFieldType.dropdown,
-        );
+    test('allows free-form dropdown values when no options are configured', () {
+      const field = TemplateField(
+        id: 'free',
+        label: 'Free',
+        type: TemplateFieldType.dropdown,
+      );
 
-        expect(validator.validateField(field, 'anything'), isEmpty);
-      },
-    );
+      expect(validator.validateField(field, 'anything'), isEmpty);
+    });
 
     test('rejects image references that escape the assets directory', () {
       const field = TemplateField(

@@ -28,7 +28,9 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   )..repeat(reverse: true);
 
   _SplashPhase _phase = _SplashPhase.initializing;
+  StorageUnavailableReason? _storageReason;
   String? _message;
+  bool _choosing = false;
 
   @override
   void initState() {
@@ -44,6 +46,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
       if (!mounted) return;
       setState(() {
         _phase = _SplashPhase.needsStorage;
+        _storageReason = status.reason;
         _message = status.message;
       });
       return;
@@ -59,27 +62,42 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
       if (!mounted) return;
       setState(() {
         _phase = _SplashPhase.errored;
+        _storageReason = null;
         _message = error.toString();
       });
     }
   }
 
   Future<void> _chooseStorage() async {
+    if (_storageReason == StorageUnavailableReason.unsupportedPlatform) return;
     final fileStore = ref.read(fileStoreProvider);
+    setState(() {
+      _choosing = true;
+      _message = null;
+    });
     try {
       await fileStore.chooseRootDirectory();
       if (!mounted) return;
       setState(() {
         _phase = _SplashPhase.initializing;
+        _storageReason = null;
         _message = null;
+        _choosing = false;
       });
       await _bootstrap();
     } on StorageUnavailableException catch (error) {
       if (!mounted) return;
-      setState(() => _message = error.message);
+      setState(() {
+        _storageReason = error.reason;
+        _message = error.message;
+        _choosing = false;
+      });
     } catch (error) {
       if (!mounted) return;
-      setState(() => _message = 'Could not open folder: $error');
+      setState(() {
+        _message = 'Could not open folder: $error';
+        _choosing = false;
+      });
     }
   }
 
@@ -150,11 +168,23 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
           ],
         );
       case _SplashPhase.needsStorage:
+        final unsupported =
+            _storageReason == StorageUnavailableReason.unsupportedPlatform;
         return Column(
           key: const ValueKey('needs-storage'),
           children: [
+            if (unsupported) ...[
+              Icon(
+                Icons.desktop_windows_rounded,
+                color: palette.warning,
+                size: 34,
+              ),
+              const SizedBox(height: 12),
+            ],
             Text(
-              kIsWeb
+              unsupported
+                  ? 'Desktop browser required'
+                  : kIsWeb
                   ? 'Choose a folder for your Organote library'
                   : 'Pick a storage folder',
               textAlign: TextAlign.center,
@@ -174,11 +204,26 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
               ).textTheme.bodySmall?.copyWith(color: palette.textSecondary),
             ),
             const SizedBox(height: 18),
-            FilledButton.icon(
-              onPressed: _chooseStorage,
-              icon: const Icon(Icons.folder_open_rounded, size: 18),
-              label: const Text('Choose folder'),
-            ),
+            if (unsupported)
+              OutlinedButton.icon(
+                onPressed: null,
+                icon: const Icon(Icons.block_rounded, size: 18),
+                label: const Text('Folder picker unavailable'),
+              )
+            else
+              FilledButton.icon(
+                onPressed: _choosing ? null : _chooseStorage,
+                icon: _choosing
+                    ? SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: palette.onAccent,
+                        ),
+                      )
+                    : const Icon(Icons.folder_open_rounded, size: 18),
+                label: Text(_choosing ? 'Opening picker...' : 'Choose folder'),
+              ),
           ],
         );
       case _SplashPhase.ready:
@@ -225,6 +270,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
               onPressed: () {
                 setState(() {
                   _phase = _SplashPhase.initializing;
+                  _storageReason = null;
                   _message = null;
                 });
                 _bootstrap();

@@ -6,8 +6,8 @@ contracts change.
 
 ## Status
 
-Phases 1 through 11 are shipped on the frontend, and Phase 12 polish is in
-progress. `flutter analyze` is clean and the current unit/widget suite passes.
+Phases 1 through 12 are shipped on the frontend. `flutter analyze` is clean and
+the current unit/widget suite passes.
 
 - Phase 1 (foundation): `lib/ui/theme/**` (OkLCH color tokens, motion curves,
   density tokens, Plus Jakarta + JetBrains Mono via `google_fonts`,
@@ -98,8 +98,9 @@ progress. `flutter analyze` is clean and the current unit/widget suite passes.
 - Phase 12 (Polish): Desktop keyboard shortcuts are now wired in
   `lib/ui/app/web_shell.dart`: Ctrl/Cmd+1/2/3 switches panes, Ctrl/Cmd+N creates
   a contextual note/template draft, Ctrl/Cmd+K focuses the active search pane,
-  and Escape dismisses an unsaved draft/focus. Coverage added in
-  `test/ui/web_shell_test.dart`.
+  and Escape dismisses an unsaved draft/focus. The desktop rail now exposes
+  shortcut-aware tooltips, selected-button semantics, and hover/press feedback.
+  Coverage added in `test/ui/web_shell_test.dart`.
 
 ### Unilateral decisions taken (please review)
 
@@ -146,7 +147,7 @@ Acknowledgements:
 
 ## No pending requests at this time
 
-Frontend will post new requests here as they arise during Phase 12.
+Frontend will post new requests here as they arise during post-polish cleanup.
 
 Phase 12 frontend follow-up: Compliance issue ignore now calls
 `ComplianceRepository.ignoreIssue(issue.id)` and keeps only an optimistic local

@@ -42,9 +42,7 @@ void main() {
         templateId: templateId,
         templateName: templateName,
         templateVersion: templateVersion,
-        records: <NoteRecord>[
-          NoteRecord(label: 'Record', values: values),
-        ],
+        records: <NoteRecord>[NoteRecord(label: 'Record', values: values)],
       );
     }
 
@@ -80,10 +78,12 @@ void main() {
       final summary = service.scan(
         templates: const <Template>[serverV1],
         notes: <Note>[
-          noteWith(values: const {
-            'Host Name': 'nas-1',
-            'IP Address': 'not.an.ip.address',
-          }),
+          noteWith(
+            values: const {
+              'Host Name': 'nas-1',
+              'IP Address': 'not.an.ip.address',
+            },
+          ),
         ],
       );
 
@@ -127,9 +127,7 @@ void main() {
     test('flags orphan template refs when the template is gone', () {
       final summary = service.scan(
         templates: const <Template>[],
-        notes: <Note>[
-          noteWith(templateId: 'missing', templateName: 'Missing'),
-        ],
+        notes: <Note>[noteWith(templateId: 'missing', templateName: 'Missing')],
       );
 
       final issue = summary.issues.singleWhere(
@@ -142,9 +140,7 @@ void main() {
     test('ignores notes that never referenced a template', () {
       final summary = service.scan(
         templates: const <Template>[],
-        notes: <Note>[
-          noteWith(templateId: null, templateName: null),
-        ],
+        notes: <Note>[noteWith(templateId: null, templateName: null)],
       );
 
       expect(summary.issues, isEmpty);
@@ -203,10 +199,7 @@ void main() {
         final summary = service.scan(
           templates: const <Template>[renamedV2],
           notes: <Note>[
-            noteWith(
-              templateVersion: 2,
-              values: const {'Host Name': 'nas-1'},
-            ),
+            noteWith(templateVersion: 2, values: const {'Host Name': 'nas-1'}),
           ],
         );
 
@@ -239,10 +232,7 @@ void main() {
         final summary = service.scan(
           templates: const <Template>[renamedV2],
           notes: <Note>[
-            noteWith(
-              templateVersion: 2,
-              values: const {'Hostname': 'nas-1'},
-            ),
+            noteWith(templateVersion: 2, values: const {'Hostname': 'nas-1'}),
           ],
         );
 
@@ -267,10 +257,7 @@ void main() {
         ],
       );
       final notes = <Note>[
-        noteWith(
-          templateVersion: 1,
-          values: const {'Host Name': 'nas-1'},
-        ),
+        noteWith(templateVersion: 1, values: const {'Host Name': 'nas-1'}),
       ];
 
       final initial = service.scan(

@@ -156,33 +156,41 @@ void main() {
       },
     );
 
-    test('state 4: local deletion (ledger + remote, no local) pushes soft-delete', () {
-      final actions = reconciler.reconcile(
-        local: const {},
-        remote: {'notes/gone-local.md': entry('notes/gone-local.md', 'r', t2)},
-        ledger: {'notes/gone-local.md': ledger('notes/gone-local.md')},
-      );
+    test(
+      'state 4: local deletion (ledger + remote, no local) pushes soft-delete',
+      () {
+        final actions = reconciler.reconcile(
+          local: const {},
+          remote: {
+            'notes/gone-local.md': entry('notes/gone-local.md', 'r', t2),
+          },
+          ledger: {'notes/gone-local.md': ledger('notes/gone-local.md')},
+        );
 
-      expect(
-        _type(actions, 'notes/gone-local.md'),
-        SyncPlanActionType.pushSoftDelete,
-      );
-    });
+        expect(
+          _type(actions, 'notes/gone-local.md'),
+          SyncPlanActionType.pushSoftDelete,
+        );
+      },
+    );
 
-    test('state 5: remote deletion (ledger + local, no remote) deletes locally', () {
-      final actions = reconciler.reconcile(
-        local: {
-          'notes/gone-remote.md': entry('notes/gone-remote.md', 'l', t2),
-        },
-        remote: const {},
-        ledger: {'notes/gone-remote.md': ledger('notes/gone-remote.md')},
-      );
+    test(
+      'state 5: remote deletion (ledger + local, no remote) deletes locally',
+      () {
+        final actions = reconciler.reconcile(
+          local: {
+            'notes/gone-remote.md': entry('notes/gone-remote.md', 'l', t2),
+          },
+          remote: const {},
+          ledger: {'notes/gone-remote.md': ledger('notes/gone-remote.md')},
+        );
 
-      expect(
-        _type(actions, 'notes/gone-remote.md'),
-        SyncPlanActionType.deleteLocal,
-      );
-    });
+        expect(
+          _type(actions, 'notes/gone-remote.md'),
+          SyncPlanActionType.deleteLocal,
+        );
+      },
+    );
 
     test('state 6: deleted everywhere prunes the orphan ledger entry', () {
       final actions = reconciler.reconcile(
@@ -197,46 +205,40 @@ void main() {
       );
     });
 
-    test('remote soft-delete flag triggers deleteLocal when local still present', () {
-      final actions = reconciler.reconcile(
-        local: {'notes/flag.md': entry('notes/flag.md', 'l', t1)},
-        remote: {
-          'notes/flag.md': entry(
-            'notes/flag.md',
-            'r',
-            t2,
-            softDeleted: true,
-          ),
-        },
-        ledger: {'notes/flag.md': ledger('notes/flag.md')},
-      );
+    test(
+      'remote soft-delete flag triggers deleteLocal when local still present',
+      () {
+        final actions = reconciler.reconcile(
+          local: {'notes/flag.md': entry('notes/flag.md', 'l', t1)},
+          remote: {
+            'notes/flag.md': entry('notes/flag.md', 'r', t2, softDeleted: true),
+          },
+          ledger: {'notes/flag.md': ledger('notes/flag.md')},
+        );
 
-      expect(_type(actions, 'notes/flag.md'), SyncPlanActionType.deleteLocal);
-    });
+        expect(_type(actions, 'notes/flag.md'), SyncPlanActionType.deleteLocal);
+      },
+    );
 
-    test('remote soft-delete flag prunes ledger when local is already gone', () {
-      final actions = reconciler.reconcile(
-        local: const {},
-        remote: {
-          'notes/flag.md': entry(
-            'notes/flag.md',
-            'r',
-            t2,
-            softDeleted: true,
-          ),
-        },
-        ledger: {'notes/flag.md': ledger('notes/flag.md')},
-      );
+    test(
+      'remote soft-delete flag prunes ledger when local is already gone',
+      () {
+        final actions = reconciler.reconcile(
+          local: const {},
+          remote: {
+            'notes/flag.md': entry('notes/flag.md', 'r', t2, softDeleted: true),
+          },
+          ledger: {'notes/flag.md': ledger('notes/flag.md')},
+        );
 
-      expect(_type(actions, 'notes/flag.md'), SyncPlanActionType.pruneLedger);
-    });
+        expect(_type(actions, 'notes/flag.md'), SyncPlanActionType.pruneLedger);
+      },
+    );
 
     test('zombie remote (present in local trash) pushes soft-delete', () {
       final actions = reconciler.reconcile(
         local: const {},
-        remote: {
-          'notes/zombie.md': entry('notes/zombie.md', 'r', t2),
-        },
+        remote: {'notes/zombie.md': entry('notes/zombie.md', 'r', t2)},
         ledger: const {},
         trashedOriginalPaths: {'notes/zombie.md'},
       );
@@ -279,12 +281,7 @@ void main() {
         final actions = reconciler.reconcile(
           local: const {},
           remote: {
-            'assets/any.png': entry(
-              'assets/any.png',
-              'r',
-              t2,
-              isAsset: true,
-            ),
+            'assets/any.png': entry('assets/any.png', 'r', t2, isAsset: true),
           },
           ledger: const {},
         );
@@ -298,18 +295,15 @@ void main() {
 
     test('actions are deterministic and sorted by path', () {
       final actions = reconciler.reconcile(
-        local: {
-          'b.md': entry('b.md', 'l', t1),
-          'a.md': entry('a.md', 'l', t1),
-        },
+        local: {'b.md': entry('b.md', 'l', t1), 'a.md': entry('a.md', 'l', t1)},
         remote: const {},
         ledger: const {},
       );
 
-      expect(
-        actions.map((action) => action.relativePath).toList(),
-        <String>['a.md', 'b.md'],
-      );
+      expect(actions.map((action) => action.relativePath).toList(), <String>[
+        'a.md',
+        'b.md',
+      ]);
     });
   });
 }

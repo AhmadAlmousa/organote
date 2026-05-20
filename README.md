@@ -1,17 +1,24 @@
-# organote
+# Organote
 
-A new Flutter project.
+Local-first structured markdown notes.
 
-## Getting Started
+## Web Testing
 
-This project is a starting point for a Flutter application.
+For a normal desktop browser test, build and serve the release web bundle:
 
-A few resources to get you started if this is your first Flutter project:
+```sh
+/home/ahmad/flutter/bin/flutter build web
+python3 -m http.server 4301 -d build/web
+```
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+Then open `http://127.0.0.1:4301/`.
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+Avoid using `flutter run -d web-server` as the browser URL for general manual
+testing. That mode serves the Dart debug/DDC loader and arbitrary browsers can
+sit on a blank page after the DDC module logs. For debug sessions, use
+`flutter run -d chrome` so Flutter launches and wires the browser itself.
+
+Organote Web requires real folder access through the File System Access API.
+Use desktop Chrome or Edge over HTTPS or localhost. Mobile browsers are blocked
+with an explicit unsupported-browser message; use the native Android build for
+phone testing.

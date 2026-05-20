@@ -15,6 +15,14 @@
     }
   }
 
+  function isMobileBrowser() {
+    const userAgent = navigator.userAgent || "";
+    return Boolean(
+      (navigator.userAgentData && navigator.userAgentData.mobile) ||
+        /Android|iPhone|iPad|iPod/i.test(userAgent)
+    );
+  }
+
   async function directoryFor(path, create) {
     if (!rootHandle) {
       throw new Error("No Organote storage folder selected");
@@ -88,10 +96,21 @@
   window.organoteFs = {
     isSupported() {
       return Boolean(
-        window.isSecureContext &&
+        !isMobileBrowser() &&
+          window.isSecureContext &&
           window.showDirectoryPicker &&
+          window.FileSystemDirectoryHandle &&
           FileSystemDirectoryHandle.prototype.entries
       );
+    },
+    supportMessage() {
+      if (!window.isSecureContext) {
+        return "Folder access requires HTTPS or localhost.";
+      }
+      if (isMobileBrowser()) {
+        return "Mobile browsers do not expose folder access. Use desktop Chrome or Edge for Organote Web.";
+      }
+      return "This browser does not expose the File System Access API. Use desktop Chrome or Edge.";
     },
     rootName() {
       return rootHandle ? rootHandle.name : "";

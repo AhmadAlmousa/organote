@@ -1934,16 +1934,23 @@ class _SideRail extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final palette = OrgPaletteScope.of(context);
     const items = <_RailItem>[
-      _RailItem(id: OrgTabId.home, icon: Icons.home_rounded, label: 'Home'),
+      _RailItem(
+        id: OrgTabId.home,
+        icon: Icons.home_rounded,
+        label: 'Home',
+        shortcutLabel: 'Ctrl/Cmd+1',
+      ),
       _RailItem(
         id: OrgTabId.templates,
         icon: Icons.dashboard_customize_rounded,
         label: 'Templates',
+        shortcutLabel: 'Ctrl/Cmd+2',
       ),
       _RailItem(
         id: OrgTabId.settings,
         icon: Icons.tune_rounded,
         label: 'Settings',
+        shortcutLabel: 'Ctrl/Cmd+3',
       ),
     ];
     final theme = ref.watch(themeProvider);
@@ -1989,11 +1996,17 @@ class _SideRail extends ConsumerWidget {
 }
 
 class _RailItem {
-  const _RailItem({required this.id, required this.icon, required this.label});
+  const _RailItem({
+    required this.id,
+    required this.icon,
+    required this.label,
+    this.shortcutLabel,
+  });
 
   final OrgTabId id;
   final IconData icon;
   final String label;
+  final String? shortcutLabel;
 }
 
 class _RailButton extends StatelessWidget {
@@ -2012,48 +2025,102 @@ class _RailButton extends StatelessWidget {
     return _RailIconButton(
       icon: item.icon,
       label: item.label,
+      shortcutLabel: item.shortcutLabel,
       active: active,
       onTap: onTap,
     );
   }
 }
 
-class _RailIconButton extends StatelessWidget {
+class _RailIconButton extends StatefulWidget {
   const _RailIconButton({
     required this.icon,
     required this.label,
     required this.onTap,
     this.active = false,
+    this.shortcutLabel,
   });
 
   final IconData icon;
   final String label;
   final VoidCallback onTap;
   final bool active;
+  final String? shortcutLabel;
+
+  @override
+  State<_RailIconButton> createState() => _RailIconButtonState();
+}
+
+class _RailIconButtonState extends State<_RailIconButton> {
+  bool _hover = false;
+  bool _down = false;
 
   @override
   Widget build(BuildContext context) {
     final palette = OrgPaletteScope.of(context);
-    final color = active ? palette.accent : palette.textTertiary;
-    return Tooltip(
-      message: label,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        child: InkResponse(
-          onTap: onTap,
-          radius: 32,
-          borderRadius: BorderRadius.circular(14),
-          child: AnimatedContainer(
-            duration: OrgDurations.toggle,
-            curve: OrgCurves.spring,
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: active ? palette.accentSoft : Colors.transparent,
+    final color = widget.active ? palette.accent : palette.textTertiary;
+    final tooltip = widget.shortcutLabel == null
+        ? widget.label
+        : '${widget.label} - ${widget.shortcutLabel}';
+    final scale = _down
+        ? 0.94
+        : _hover
+        ? 1.03
+        : 1.0;
+    final background = widget.active
+        ? palette.accentSoft
+        : _hover
+        ? palette.surfaceHigh
+        : Colors.transparent;
+    return Semantics(
+      label: widget.label,
+      hint: widget.shortcutLabel == null
+          ? null
+          : 'Keyboard shortcut ${widget.shortcutLabel}',
+      button: true,
+      selected: widget.active,
+      child: Tooltip(
+        message: tooltip,
+        excludeFromSemantics: true,
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          onEnter: (_) => setState(() => _hover = true),
+          onExit: (_) => setState(() {
+            _hover = false;
+            _down = false;
+          }),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            child: InkResponse(
+              onTap: widget.onTap,
+              onTapDown: (_) => setState(() => _down = true),
+              onTapCancel: () => setState(() => _down = false),
+              onTapUp: (_) => setState(() => _down = false),
+              radius: 32,
               borderRadius: BorderRadius.circular(14),
+              child: AnimatedScale(
+                scale: scale,
+                duration: OrgDurations.tap,
+                curve: OrgCurves.spring,
+                child: AnimatedContainer(
+                  duration: OrgDurations.toggle,
+                  curve: OrgCurves.spring,
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: background,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: _hover && !widget.active
+                          ? palette.border
+                          : Colors.transparent,
+                    ),
+                  ),
+                  alignment: Alignment.center,
+                  child: Icon(widget.icon, color: color, size: 22),
+                ),
+              ),
             ),
-            alignment: Alignment.center,
-            child: Icon(icon, color: color, size: 22),
           ),
         ),
       ),

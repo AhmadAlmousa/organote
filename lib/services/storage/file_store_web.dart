@@ -7,6 +7,7 @@ external _OrganoteFs get _organoteFs;
 
 extension type _OrganoteFs(JSObject _) implements JSObject {
   external bool isSupported();
+  external String supportMessage();
   external String rootName();
   external JSPromise<JSString> chooseRoot();
   external JSPromise<JSAny?> ensureStructure(JSArray<JSString> directories);
@@ -38,9 +39,9 @@ class WebFileSystemAccessStore implements FileStore {
   @override
   Future<void> initialize({String? rootPath}) async {
     if (!_organoteFs.isSupported()) {
-      throw const StorageUnavailableException(
+      throw StorageUnavailableException(
         StorageUnavailableReason.unsupportedPlatform,
-        'This browser does not support real folder access for Organote.',
+        _organoteFs.supportMessage(),
       );
     }
     if (_organoteFs.rootName().isEmpty) {
@@ -56,9 +57,9 @@ class WebFileSystemAccessStore implements FileStore {
   @override
   Future<void> chooseRootDirectory() async {
     if (!_organoteFs.isSupported()) {
-      throw const StorageUnavailableException(
+      throw StorageUnavailableException(
         StorageUnavailableReason.unsupportedPlatform,
-        'This browser does not support the File System Access API.',
+        _organoteFs.supportMessage(),
       );
     }
     await _organoteFs.chooseRoot().toDart;
@@ -69,9 +70,9 @@ class WebFileSystemAccessStore implements FileStore {
   @override
   Future<StorageStatus> getStatus() async {
     if (!_organoteFs.isSupported()) {
-      return const StorageStatus.unavailable(
+      return StorageStatus.unavailable(
         reason: StorageUnavailableReason.unsupportedPlatform,
-        message: 'Use a secure Chromium-based browser with folder access.',
+        message: _organoteFs.supportMessage(),
       );
     }
     final rootName = _organoteFs.rootName();

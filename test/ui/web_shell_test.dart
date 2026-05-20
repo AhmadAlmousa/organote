@@ -27,7 +27,7 @@ void main() {
     expect(find.text('Prod DB'), findsWidgets);
     expect(find.text('Tap any field to copy its value'), findsOneWidget);
 
-    await tester.tap(find.byTooltip('Templates'));
+    await tester.tap(find.byTooltip('Templates - Ctrl/Cmd+2'));
     await tester.pumpAndSettle();
 
     expect(find.text('Schemas'), findsOneWidget);

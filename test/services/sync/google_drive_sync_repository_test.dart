@@ -67,18 +67,16 @@ void main() {
 
         expect(remote.softDeletedPaths, ['notes/bye.md']);
         final ledger = await _readLedger(store);
-        expect(
-          ledger.map((entry) => entry['relativePath']).toList(),
-          ['notes/keep.md'],
-        );
+        expect(ledger.map((entry) => entry['relativePath']).toList(), [
+          'notes/keep.md',
+        ]);
       },
     );
 
     test('deletes local files when the remote has dropped them', () async {
       final store = MemoryFileStore();
       await store.initialize();
-      final remote = _FakeRemoteFileProvider()
-        ..seed('notes/bye.md', '# Bye\n');
+      final remote = _FakeRemoteFileProvider()..seed('notes/bye.md', '# Bye\n');
       final repository = GoogleDriveSyncRepository(
         fileStore: store,
         remoteFileProvider: remote,
@@ -125,31 +123,28 @@ void main() {
       expect(await store.exists('notes/zombie.md'), isFalse);
     });
 
-    test(
-      'uses remote clock last-write-wins for concurrent edits',
-      () async {
-        final store = MemoryFileStore();
-        await store.initialize();
-        await store.writeText('notes/conflict.md', '# Local edit\n');
-        final remote = _FakeRemoteFileProvider();
-        final repository = GoogleDriveSyncRepository(
-          fileStore: store,
-          remoteFileProvider: remote,
-        );
+    test('uses remote clock last-write-wins for concurrent edits', () async {
+      final store = MemoryFileStore();
+      await store.initialize();
+      await store.writeText('notes/conflict.md', '# Local edit\n');
+      final remote = _FakeRemoteFileProvider();
+      final repository = GoogleDriveSyncRepository(
+        fileStore: store,
+        remoteFileProvider: remote,
+      );
 
-        // First sync: file is treated as local-new, uploads.
-        await repository.syncNow();
+      // First sync: file is treated as local-new, uploads.
+      await repository.syncNow();
 
-        // Simulate divergence: local edits again AND remote advances.
-        await store.writeText('notes/conflict.md', '# Local edit 2\n');
-        remote.bumpToFuture('notes/conflict.md', '# Remote wins\n');
+      // Simulate divergence: local edits again AND remote advances.
+      await store.writeText('notes/conflict.md', '# Local edit 2\n');
+      remote.bumpToFuture('notes/conflict.md', '# Remote wins\n');
 
-        await repository.syncNow();
+      await repository.syncNow();
 
-        // Remote clock newer -> downloadRemoteConflictWinner.
-        expect(await store.readText('notes/conflict.md'), '# Remote wins\n');
-      },
-    );
+      // Remote clock newer -> downloadRemoteConflictWinner.
+      expect(await store.readText('notes/conflict.md'), '# Remote wins\n');
+    });
 
     test(
       'sequential lock collapses concurrent syncNow into one execution',
@@ -168,35 +163,44 @@ void main() {
 
         expect(identical(first, second), isTrue);
         await Future.wait([first, second]);
-        expect(remote.uploadedPaths.where((p) => p == 'notes/local.md').length, 1);
+        expect(
+          remote.uploadedPaths.where((p) => p == 'notes/local.md').length,
+          1,
+        );
       },
     );
 
-    test('emits status transitions in order during a successful sync', () async {
-      final store = MemoryFileStore();
-      await store.initialize();
-      await store.writeText('notes/local.md', '# Local\n');
-      final remote = _FakeRemoteFileProvider();
-      final repository = GoogleDriveSyncRepository(
-        fileStore: store,
-        remoteFileProvider: remote,
-      );
-      final phases = <SyncPhase>[];
-      final subscription = repository.watchSyncStatus().listen(
-        (status) => phases.add(status.phase),
-      );
+    test(
+      'emits status transitions in order during a successful sync',
+      () async {
+        final store = MemoryFileStore();
+        await store.initialize();
+        await store.writeText('notes/local.md', '# Local\n');
+        final remote = _FakeRemoteFileProvider();
+        final repository = GoogleDriveSyncRepository(
+          fileStore: store,
+          remoteFileProvider: remote,
+        );
+        final phases = <SyncPhase>[];
+        final subscription = repository.watchSyncStatus().listen(
+          (status) => phases.add(status.phase),
+        );
 
-      await repository.syncNow();
-      await Future<void>.delayed(Duration.zero);
-      await subscription.cancel();
+        await repository.syncNow();
+        await Future<void>.delayed(Duration.zero);
+        await subscription.cancel();
 
-      expect(phases.first, SyncPhase.scanning);
-      expect(phases, containsAllInOrder(<SyncPhase>[
-        SyncPhase.scanning,
-        SyncPhase.syncing,
-        SyncPhase.complete,
-      ]));
-    });
+        expect(phases.first, SyncPhase.scanning);
+        expect(
+          phases,
+          containsAllInOrder(<SyncPhase>[
+            SyncPhase.scanning,
+            SyncPhase.syncing,
+            SyncPhase.complete,
+          ]),
+        );
+      },
+    );
 
     test('emits error status when sync runs before sign-in', () async {
       final store = MemoryFileStore();
@@ -251,7 +255,8 @@ class _FakeRemoteFileProvider implements RemoteFileProvider {
         path,
         SyncManifestEntry(
           relativePath: path,
-          checksum: '$path-${bytes.length}-${modifiedAt[path]!.toIso8601String()}',
+          checksum:
+              '$path-${bytes.length}-${modifiedAt[path]!.toIso8601String()}',
           modifiedAt: modifiedAt[path] ?? DateTime.utc(2026),
           remoteFileId: 'remote-$path',
         ),

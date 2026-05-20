@@ -174,8 +174,10 @@ void main() {
 
       final decoded = codec.decodeNote(codec.encodeNote(note));
 
-      expect(decoded.records.single.values['photo'],
-          'assets/server-photos/1700000000_rack.png');
+      expect(
+        decoded.records.single.values['photo'],
+        'assets/server-photos/1700000000_rack.png',
+      );
       expect(decoded.isPinned, isTrue);
       expect(decoded.isFavorite, isTrue);
     });

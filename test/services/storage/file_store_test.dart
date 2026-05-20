@@ -4,11 +4,14 @@ import 'package:organote/services/storage/memory_file_store.dart';
 
 void main() {
   group('sanitizeFileName', () {
-    test('lowercases, replaces whitespace with dashes, and strips specials', () {
-      expect(sanitizeFileName('Home Lab'), 'home-lab');
-      expect(sanitizeFileName('  Mixed   Case  '), 'mixed-case');
-      expect(sanitizeFileName('Rack #1 Photo!'), 'rack-1-photo');
-    });
+    test(
+      'lowercases, replaces whitespace with dashes, and strips specials',
+      () {
+        expect(sanitizeFileName('Home Lab'), 'home-lab');
+        expect(sanitizeFileName('  Mixed   Case  '), 'mixed-case');
+        expect(sanitizeFileName('Rack #1 Photo!'), 'rack-1-photo');
+      },
+    );
 
     test('collapses consecutive dashes and trims dashes/dots from edges', () {
       expect(sanitizeFileName('--Lots---Of---Dashes--'), 'lots-of-dashes');
@@ -35,39 +38,37 @@ void main() {
 
     test('rewrites back-slashes and collapses redundant segments', () {
       expect(normalizeRelativePath('notes\\infra\\lab'), 'notes/infra/lab');
-      expect(normalizeRelativePath('notes/./infra/../infra/lab'),
-          'notes/infra/lab');
+      expect(
+        normalizeRelativePath('notes/./infra/../infra/lab'),
+        'notes/infra/lab',
+      );
     });
 
     test('rejects absolute paths and escapes outside the root', () {
-      expect(
-        () => normalizeRelativePath('/etc/passwd'),
-        throwsArgumentError,
-      );
-      expect(
-        () => normalizeRelativePath('../escaped'),
-        throwsArgumentError,
-      );
+      expect(() => normalizeRelativePath('/etc/passwd'), throwsArgumentError);
+      expect(() => normalizeRelativePath('../escaped'), throwsArgumentError);
     });
   });
 
   group('MemoryFileStore', () {
-    test('initialize marks the store ready and ensureStructure is idempotent',
-        () async {
-      final store = MemoryFileStore();
+    test(
+      'initialize marks the store ready and ensureStructure is idempotent',
+      () async {
+        final store = MemoryFileStore();
 
-      final beforeStatus = await store.getStatus();
-      expect(beforeStatus.isAvailable, isFalse);
-      expect(beforeStatus.reason, StorageUnavailableReason.notInitialized);
+        final beforeStatus = await store.getStatus();
+        expect(beforeStatus.isAvailable, isFalse);
+        expect(beforeStatus.reason, StorageUnavailableReason.notInitialized);
 
-      await store.initialize();
-      await store.ensureStructure();
-      await store.ensureStructure();
+        await store.initialize();
+        await store.ensureStructure();
+        await store.ensureStructure();
 
-      final afterStatus = await store.getStatus();
-      expect(afterStatus.isAvailable, isTrue);
-      expect(afterStatus.rootLabel, 'memory');
-    });
+        final afterStatus = await store.getStatus();
+        expect(afterStatus.isAvailable, isTrue);
+        expect(afterStatus.rootLabel, 'memory');
+      },
+    );
 
     test('throws StorageUnavailableException before initialize', () async {
       final store = MemoryFileStore();
@@ -77,22 +78,24 @@ void main() {
       );
     });
 
-    test('lists files non-recursively without descending into subdirs',
-        () async {
-      final store = MemoryFileStore();
-      await store.initialize();
-      await store.writeText('notes/top.md', 'top');
-      await store.writeText('notes/infra/lab.md', 'lab');
+    test(
+      'lists files non-recursively without descending into subdirs',
+      () async {
+        final store = MemoryFileStore();
+        await store.initialize();
+        await store.writeText('notes/top.md', 'top');
+        await store.writeText('notes/infra/lab.md', 'lab');
 
-      final shallow = await store.listFiles('notes');
-      expect(shallow.map((file) => file.relativePath), ['notes/top.md']);
+        final shallow = await store.listFiles('notes');
+        expect(shallow.map((file) => file.relativePath), ['notes/top.md']);
 
-      final deep = await store.listFiles('notes', recursive: true);
-      expect(
-        deep.map((file) => file.relativePath),
-        containsAll(<String>['notes/top.md', 'notes/infra/lab.md']),
-      );
-    });
+        final deep = await store.listFiles('notes', recursive: true);
+        expect(
+          deep.map((file) => file.relativePath),
+          containsAll(<String>['notes/top.md', 'notes/infra/lab.md']),
+        );
+      },
+    );
 
     test('move relocates a directory subtree to a new prefix', () async {
       final store = MemoryFileStore();
