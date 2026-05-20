@@ -378,5 +378,84 @@ void main() {
         expect(raw, contains('Stray Record'));
       },
     );
+
+    test(
+      'persists ignored compliance issues across reloads and restores them',
+      () async {
+        final template = await repository.saveTemplate(
+          const TemplateInput(
+            id: 'server',
+            name: 'Server',
+            version: 2,
+            fields: [
+              TemplateField(
+                id: 'host',
+                label: 'Host',
+                type: TemplateFieldType.text,
+              ),
+            ],
+          ),
+        );
+        await repository.saveStructuredNote(
+          NoteInput(
+            title: 'Old Note',
+            templateId: template.id,
+            templateName: template.name,
+            templateVersion: 1,
+            records: const [
+              NoteRecord(label: 'Record', values: {'Host': 'nas-1'}),
+            ],
+          ),
+        );
+
+        final initial = await repository.scanNow();
+        final drift = initial.issues.singleWhere(
+          (issue) => issue.type == ComplianceIssueType.versionDrift,
+        );
+        expect(drift.ignored, isFalse);
+        expect(initial.activeCount, 1);
+
+        await repository.ignoreIssue(drift.id);
+
+        final afterIgnore = await repository.scanNow();
+        final ignoredIssue = afterIgnore.issues.singleWhere(
+          (issue) => issue.id == drift.id,
+        );
+        expect(ignoredIssue.ignored, isTrue);
+        expect(afterIgnore.activeCount, isZero);
+
+        final persisted = jsonDecode(
+          await store.readText('.organote/compliance_ignores.json'),
+        ) as List<dynamic>;
+        expect(persisted, contains(drift.id));
+
+        // Fresh repository instance must still see the persisted ignore.
+        final reopened = LocalOrganoteRepository(fileStore: store);
+        final reopenedSummary = await reopened.scanNow();
+        expect(
+          reopenedSummary.issues
+              .singleWhere((issue) => issue.id == drift.id)
+              .ignored,
+          isTrue,
+        );
+        await reopened.dispose();
+
+        await repository.restoreIgnoredIssue(drift.id);
+        final restored = await repository.scanNow();
+        final restoredIssue = restored.issues.singleWhere(
+          (issue) => issue.id == drift.id,
+        );
+        expect(restoredIssue.ignored, isFalse);
+        expect(restored.activeCount, 1);
+      },
+    );
+
+    test('ignoreIssue is idempotent for unknown ids', () async {
+      await repository.reload();
+      await repository.ignoreIssue('does-not-exist');
+      await repository.restoreIgnoredIssue('also-missing');
+      final summary = await repository.scanNow();
+      expect(summary.issues, isEmpty);
+    });
   });
 }

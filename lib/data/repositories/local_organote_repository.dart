@@ -40,6 +40,7 @@ class LocalOrganoteRepository
 
   static const _trashIndexPath = '.organote/trash.json';
   static const _categoriesPath = '.organote/categories.json';
+  static const _complianceIgnoresPath = '.organote/compliance_ignores.json';
 
   final FileStore _fileStore;
   final MarkdownCodec _markdownCodec;
@@ -89,11 +90,13 @@ class LocalOrganoteRepository
     final templates = await _loadTemplates();
     final notes = await _loadNotes();
     final trash = await _readTrashEntries();
+    final ignoredIssueIds = await _readIgnoredIssueIds();
     final categories = await _buildCategories(notes);
     final tags = notes.expand((note) => note.tags).toSet().toList()..sort();
     final complianceSummary = _complianceService.scan(
       templates: templates,
       notes: notes,
+      ignoredIssueIds: ignoredIssueIds,
     );
     final snapshot = LibrarySnapshot(
       notes: notes,
@@ -402,6 +405,24 @@ class LocalOrganoteRepository
   }
 
   @override
+  Future<void> ignoreIssue(String issueId) async {
+    final ignored = await _readIgnoredIssueIds();
+    if (ignored.add(issueId)) {
+      await _writeIgnoredIssueIds(ignored);
+      await reload();
+    }
+  }
+
+  @override
+  Future<void> restoreIgnoredIssue(String issueId) async {
+    final ignored = await _readIgnoredIssueIds();
+    if (ignored.remove(issueId)) {
+      await _writeIgnoredIssueIds(ignored);
+      await reload();
+    }
+  }
+
+  @override
   Future<List<int>> createBackupZip() => _backupService.createBackupZip();
 
   @override
@@ -592,6 +613,24 @@ class LocalOrganoteRepository
           };
         }).toList(),
       ),
+    );
+  }
+
+  Future<Set<String>> _readIgnoredIssueIds() async {
+    if (!await _fileStore.exists(_complianceIgnoresPath)) {
+      return <String>{};
+    }
+    final decoded =
+        jsonDecode(await _fileStore.readText(_complianceIgnoresPath))
+            as List<dynamic>;
+    return decoded.cast<String>().toSet();
+  }
+
+  Future<void> _writeIgnoredIssueIds(Set<String> ids) {
+    final ordered = ids.toList()..sort();
+    return _fileStore.writeText(
+      _complianceIgnoresPath,
+      const JsonEncoder.withIndent('  ').convert(ordered),
     );
   }
 

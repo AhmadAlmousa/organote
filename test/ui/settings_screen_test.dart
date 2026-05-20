@@ -396,6 +396,12 @@ class _FakeComplianceRepo implements ComplianceRepository {
   Stream<ComplianceSummary> watchComplianceSummary() {
     return Stream<ComplianceSummary>.value(summary);
   }
+
+  @override
+  Future<void> ignoreIssue(String issueId) async {}
+
+  @override
+  Future<void> restoreIgnoredIssue(String issueId) async {}
 }
 
 class _FakeFileStore implements FileStore {

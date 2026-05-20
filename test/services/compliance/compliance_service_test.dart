@@ -252,5 +252,47 @@ void main() {
         expect(suggestion.legacyFieldLabel, 'Hostname');
       },
     );
+
+    test('marks issues as ignored when their id is in the ignored set', () {
+      const serverV2 = Template(
+        id: 'server',
+        name: 'Server',
+        version: 2,
+        fields: <TemplateField>[
+          TemplateField(
+            id: 'host',
+            label: 'Host Name',
+            type: TemplateFieldType.text,
+          ),
+        ],
+      );
+      final notes = <Note>[
+        noteWith(
+          templateVersion: 1,
+          values: const {'Host Name': 'nas-1'},
+        ),
+      ];
+
+      final initial = service.scan(
+        templates: const <Template>[serverV2],
+        notes: notes,
+      );
+      final drift = initial.issues.singleWhere(
+        (issue) => issue.type == ComplianceIssueType.versionDrift,
+      );
+      expect(drift.ignored, isFalse);
+      expect(initial.activeCount, 1);
+
+      final summary = service.scan(
+        templates: const <Template>[serverV2],
+        notes: notes,
+        ignoredIssueIds: {drift.id},
+      );
+      final ignoredIssue = summary.issues.singleWhere(
+        (issue) => issue.id == drift.id,
+      );
+      expect(ignoredIssue.ignored, isTrue);
+      expect(summary.activeCount, isZero);
+    });
   });
 }

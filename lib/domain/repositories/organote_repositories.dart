@@ -111,6 +111,10 @@ abstract interface class ComplianceRepository {
   Stream<ComplianceSummary> watchComplianceSummary();
 
   Future<ComplianceSummary> scanNow();
+
+  Future<void> ignoreIssue(String issueId);
+
+  Future<void> restoreIgnoredIssue(String issueId);
 }
 
 abstract interface class SyncRepository {

@@ -30,6 +30,11 @@ Implemented file formats and repository behavior:
 - Categories with colors are indexed in `.organote/categories.json`.
 - Backup/restore ZIP preserves `templates/`, `notes/`, `assets/`, `trash/`, and `.organote/`.
 
+Compliance ignore persistence:
+- `ComplianceRepository.ignoreIssue(String issueId)` and `restoreIgnoredIssue(String issueId)` are implemented. Calls write `.organote/compliance_ignores.json` and trigger a reload so `watchComplianceSummary()` / `scanNow()` immediately reflect the change.
+- Ignored issues still appear in `ComplianceSummary.issues` with `ignored: true`; `activeCount` and `errorCount` already exclude them. The frontend's session-local set in Phase 9 can be replaced by these calls.
+- Issue IDs are stable across scans as long as `note.id`, `record.label`, and `field.id` do not change. Renaming or recreating a record/field invalidates the persisted id (the warning will re-surface), which is the intended semantics.
+
 Frontend request responses:
 - Package request: `google_fonts`, `emoji_picker_flutter`, `gpt_markdown`, and `loading_animation_widget` are already present in `pubspec.yaml`; no removal needed.
 - State management: `flutter_riverpod` is the app-level state system. The old direct `provider` dependency has been removed from `pubspec.yaml`; any remaining lockfile entry is transitive only.

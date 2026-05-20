@@ -10,6 +10,7 @@ class ComplianceService {
   ComplianceSummary scan({
     required List<Template> templates,
     required List<Note> notes,
+    Set<String> ignoredIssueIds = const <String>{},
   }) {
     final templateById = {
       for (final template in templates) template.id: template,
@@ -115,7 +116,28 @@ class ComplianceService {
       }
     }
 
-    return ComplianceSummary(issues: issues);
+    if (ignoredIssueIds.isEmpty) {
+      return ComplianceSummary(issues: issues);
+    }
+    return ComplianceSummary(
+      issues: [
+        for (final issue in issues)
+          if (ignoredIssueIds.contains(issue.id))
+            ComplianceIssue(
+              id: issue.id,
+              type: issue.type,
+              severity: issue.severity,
+              message: issue.message,
+              noteId: issue.noteId,
+              templateId: issue.templateId,
+              fieldLabel: issue.fieldLabel,
+              legacyFieldLabel: issue.legacyFieldLabel,
+              ignored: true,
+            )
+          else
+            issue,
+      ],
+    );
   }
 
   static String? _findLikelyLegacyKey(
