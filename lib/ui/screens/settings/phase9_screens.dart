@@ -29,7 +29,7 @@ class ComplianceReviewScreen extends ConsumerStatefulWidget {
 
 class _ComplianceReviewScreenState
     extends ConsumerState<ComplianceReviewScreen> {
-  final Set<String> _ignoredIssueIds = <String>{};
+  final Set<String> _pendingIgnoredIssueIds = <String>{};
   bool _scanBusy = false;
   bool _actionBusy = false;
 
@@ -115,7 +115,7 @@ class _ComplianceReviewScreenState
       );
       await ref.read(libraryRepositoryProvider).reload();
       if (!mounted) return;
-      setState(() => _ignoredIssueIds.add(issue.id));
+      setState(() => _pendingIgnoredIssueIds.add(issue.id));
       showOrgToast(
         context,
         message: 'Renamed value copied',
@@ -126,6 +126,34 @@ class _ComplianceReviewScreenState
       showOrgToast(
         context,
         message: 'Rename action failed',
+        icon: Icons.error_outline_rounded,
+        background: OrgPaletteScope.of(context).danger,
+      );
+    } finally {
+      if (mounted) setState(() => _actionBusy = false);
+    }
+  }
+
+  Future<void> _ignoreIssue(ComplianceIssue issue) async {
+    if (_actionBusy || _pendingIgnoredIssueIds.contains(issue.id)) return;
+    setState(() {
+      _actionBusy = true;
+      _pendingIgnoredIssueIds.add(issue.id);
+    });
+    try {
+      await ref.read(complianceRepositoryProvider).ignoreIssue(issue.id);
+      if (!mounted) return;
+      showOrgToast(
+        context,
+        message: 'Issue ignored',
+        icon: Icons.visibility_off_rounded,
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _pendingIgnoredIssueIds.remove(issue.id));
+      showOrgToast(
+        context,
+        message: 'Ignore failed',
         icon: Icons.error_outline_rounded,
         background: OrgPaletteScope.of(context).danger,
       );
@@ -146,7 +174,8 @@ class _ComplianceReviewScreenState
     final snapshot = ref.watch(librarySnapshotProvider);
     final activeIssues = snapshot.complianceSummary.issues
         .where(
-          (issue) => !issue.ignored && !_ignoredIssueIds.contains(issue.id),
+          (issue) =>
+              !issue.ignored && !_pendingIgnoredIssueIds.contains(issue.id),
         )
         .toList();
     final grouped = _groupIssues(activeIssues);
@@ -181,8 +210,7 @@ class _ComplianceReviewScreenState
                 note: _findNote(snapshot.notes, group.noteId),
                 actionBusy: _actionBusy,
                 onOpenNote: () => _openNote(group.noteId),
-                onIgnore: (issue) =>
-                    setState(() => _ignoredIssueIds.add(issue.id)),
+                onIgnore: _ignoreIssue,
                 onAcceptRename: _acceptRename,
               );
             },

@@ -211,6 +211,40 @@ void main() {
     expect(noteRepo.savedInputs, hasLength(1));
     expect(noteRepo.savedInputs.single.records.single.values['Host'], 'db');
   });
+
+  testWidgets('Compliance review persists ignored issues', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(500, 1800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final snapshot = _snapshot();
+    final complianceRepo = _FakeComplianceRepo(
+      summary: snapshot.complianceSummary,
+    );
+    await tester.pumpWidget(
+      _SettingsHarness(
+        prefs: await _prefs(),
+        snapshot: snapshot,
+        fileStore: _FakeFileStore(
+          status: const StorageStatus.available(rootLabel: 'memory'),
+        ),
+        syncRepository: _FakeSyncRepo(
+          status: const SyncStatus(phase: SyncPhase.idle, signedIn: true),
+        ),
+        complianceRepository: complianceRepo,
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.text('Review issues'));
+    await tester.pumpAndSettle();
+    expect(find.text('Missing required field'), findsWidgets);
+
+    await tester.tap(find.text('Ignore'));
+    await tester.pumpAndSettle();
+
+    expect(complianceRepo.ignoredIds, <String>['issue-1']);
+    expect(find.text('Missing required field'), findsNothing);
+  });
 }
 
 Future<SharedPreferences> _prefs() async {
@@ -385,9 +419,11 @@ class _FakeSyncRepo implements SyncRepository {
 }
 
 class _FakeComplianceRepo implements ComplianceRepository {
-  const _FakeComplianceRepo({required this.summary});
+  _FakeComplianceRepo({required this.summary});
 
   final ComplianceSummary summary;
+  final List<String> ignoredIds = <String>[];
+  final List<String> restoredIds = <String>[];
 
   @override
   Future<ComplianceSummary> scanNow() async => summary;
@@ -398,10 +434,14 @@ class _FakeComplianceRepo implements ComplianceRepository {
   }
 
   @override
-  Future<void> ignoreIssue(String issueId) async {}
+  Future<void> ignoreIssue(String issueId) async {
+    ignoredIds.add(issueId);
+  }
 
   @override
-  Future<void> restoreIgnoredIssue(String issueId) async {}
+  Future<void> restoreIgnoredIssue(String issueId) async {
+    restoredIds.add(issueId);
+  }
 }
 
 class _FakeFileStore implements FileStore {

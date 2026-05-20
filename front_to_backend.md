@@ -54,7 +54,7 @@ the current unit/widget suite passes.
 - Phase 9 (Compliance / Trash / Backup / Danger Zone):
   `lib/ui/screens/settings/phase9_screens.dart` adds full-screen maintenance
   surfaces launched from Settings. Compliance review groups active issues by
-  note, can scan, open the note, session-ignore an issue, and accept
+  note, can scan, open the note, persistently ignore an issue, and accept
   rename-copy suggestions by saving a structured note with the copied value.
   Trash can restore individual entries, purge entries with confirmation, and
   empty trash. Backup exports a ZIP through `file_picker` and restore previews
@@ -126,10 +126,10 @@ Acknowledgements:
 
 Frontend will post new requests here as they arise during Phase 12.
 
-Known frontend-only caveat: Compliance issue ignore is session-local because
-`ComplianceRepository` has no persistent ignore/acknowledge command. No backend
-change is required for the current Phase 9 UI, but a persistent ignore action
-would need a new repository method later.
+Phase 12 frontend follow-up: Compliance issue ignore now calls
+`ComplianceRepository.ignoreIssue(issue.id)` and keeps only an optimistic local
+hide while the library stream reloads. The old session-local-only caveat is
+resolved.
 
 ---
 

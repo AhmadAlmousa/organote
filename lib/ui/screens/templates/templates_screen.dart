@@ -53,7 +53,7 @@ class TemplatesScreen extends ConsumerWidget {
               child: OrgFab(
                 icon: Icons.add_box_rounded,
                 tooltip: 'New template',
-                onPressed: () => _showBuilderPlaceholder(context),
+                onPressed: () => _openTemplateBuilder(context),
               ),
             ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
@@ -67,7 +67,7 @@ class TemplatesScreen extends ConsumerWidget {
                 SliverToBoxAdapter(
                   child: _TemplatesHeader(
                     templateCount: templates.length,
-                    onCreate: () => _showBuilderPlaceholder(context),
+                    onCreate: () => _openTemplateBuilder(context),
                   ),
                 ),
                 SliverPadding(
@@ -100,9 +100,9 @@ class TemplatesScreen extends ConsumerWidget {
                     onShowNotes: (template, notes) =>
                         _showAssociatedNotes(context, template, notes),
                     onCreateNote: (template) =>
-                        _showCreateNotePlaceholder(context, template),
+                        _openNoteEditor(context, template),
                     onEdit: (template) =>
-                        _showEditTemplatePlaceholder(context, template),
+                        _openTemplateEditor(context, template),
                   ),
                   _TemplateSection(
                     title: 'Unused templates',
@@ -113,9 +113,9 @@ class TemplatesScreen extends ConsumerWidget {
                     onShowNotes: (template, notes) =>
                         _showAssociatedNotes(context, template, notes),
                     onCreateNote: (template) =>
-                        _showCreateNotePlaceholder(context, template),
+                        _openNoteEditor(context, template),
                     onEdit: (template) =>
-                        _showEditTemplatePlaceholder(context, template),
+                        _openTemplateEditor(context, template),
                   ),
                 ],
                 SliverToBoxAdapter(
@@ -131,7 +131,7 @@ class TemplatesScreen extends ConsumerWidget {
                   icon: Icons.add_box_rounded,
                   tooltip: 'New template',
                   size: 52,
-                  onPressed: () => _showBuilderPlaceholder(context),
+                  onPressed: () => _openTemplateBuilder(context),
                 ),
               ),
           ],
@@ -157,13 +157,13 @@ class TemplatesScreen extends ConsumerWidget {
     return result;
   }
 
-  void _showBuilderPlaceholder(BuildContext context) {
+  void _openTemplateBuilder(BuildContext context) {
     Navigator.of(context).push(
       OrgOverlayRoute<void>(builder: (_) => const TemplateBuilderScreen()),
     );
   }
 
-  void _showEditTemplatePlaceholder(BuildContext context, Template template) {
+  void _openTemplateEditor(BuildContext context, Template template) {
     Navigator.of(context).push(
       OrgOverlayRoute<void>(
         builder: (_) => TemplateBuilderScreen(templateId: template.id),
@@ -171,7 +171,7 @@ class TemplatesScreen extends ConsumerWidget {
     );
   }
 
-  void _showCreateNotePlaceholder(BuildContext context, Template template) {
+  void _openNoteEditor(BuildContext context, Template template) {
     Navigator.of(context).push(
       OrgOverlayRoute<void>(
         builder: (_) => NoteEditorScreen(templateId: template.id),
