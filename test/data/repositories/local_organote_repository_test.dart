@@ -457,5 +457,151 @@ void main() {
       final summary = await repository.scanNow();
       expect(summary.issues, isEmpty);
     });
+
+    test(
+      'reload on an empty store emits an empty snapshot with scaffolded dirs',
+      () async {
+        final snapshot = await repository.reload();
+
+        expect(snapshot.notes, isEmpty);
+        expect(snapshot.templates, isEmpty);
+        expect(snapshot.categories, isEmpty);
+        expect(snapshot.trash, isEmpty);
+        expect(snapshot.tags, isEmpty);
+        expect(snapshot.complianceSummary.issues, isEmpty);
+        expect(snapshot.complianceSummary.activeCount, 0);
+      },
+    );
+
+    test(
+      'round trips multi-record notes through markdown without losing rows',
+      () async {
+        final template = await repository.saveTemplate(
+          const TemplateInput(
+            id: 'family-booklet',
+            name: 'Family Booklet',
+            fields: [
+              TemplateField(
+                id: 'name',
+                label: 'Name',
+                type: TemplateFieldType.text,
+                isRequired: true,
+              ),
+              TemplateField(
+                id: 'national-id',
+                label: 'ID',
+                type: TemplateFieldType.number,
+              ),
+              TemplateField(
+                id: 'dob',
+                label: 'DOB',
+                type: TemplateFieldType.date,
+                calendarMode: CalendarMode.dual,
+                primaryCalendar: CalendarSystem.hijri,
+              ),
+            ],
+          ),
+        );
+
+        final saved = await repository.saveStructuredNote(
+          NoteInput(
+            title: 'Smith Family',
+            templateId: template.id,
+            templateName: template.name,
+            templateVersion: template.version,
+            categoryPath: 'household/identity',
+            records: const [
+              NoteRecord(
+                label: 'Person-1',
+                values: {
+                  'Name': 'Ahmad',
+                  'ID': '1020304050',
+                  'DOB': '01-01-2000 | 24-09-1420 H',
+                },
+              ),
+              NoteRecord(
+                label: 'Person-2',
+                values: {
+                  'Name': 'Sarah',
+                  'ID': '2030405060',
+                  'DOB': '01-01-2000 | 24-09-1420 H',
+                },
+              ),
+            ],
+          ),
+        );
+
+        expect(saved.sourcePath, 'notes/household/identity/smith-family.md');
+
+        final reopened = LocalOrganoteRepository(fileStore: store);
+        final snapshot = await reopened.reload();
+
+        final note = snapshot.notes.single;
+        expect(note.title, 'Smith Family');
+        expect(note.categoryPath, 'household/identity');
+        expect(note.records.map((record) => record.label), [
+          'Person-1',
+          'Person-2',
+        ]);
+        expect(note.records[0].values['name'], 'Ahmad');
+        expect(note.records[1].values['name'], 'Sarah');
+        expect(
+          note.records[1].values['dob'],
+          '01-01-2000 | 24-09-1420 H',
+        );
+        await reopened.dispose();
+      },
+    );
+
+    test(
+      'saveRawSource rewrites the file on disk and re-parses the note',
+      () async {
+        final original = await repository.saveStructuredNote(
+          const NoteInput(
+            title: 'Editable Note',
+            tags: ['draft'],
+            records: [
+              NoteRecord(label: 'Record', values: {'Field': 'before'}),
+            ],
+          ),
+        );
+
+        final newSource = '''
+# Editable Note
+
+## Record
+- **Field**: after
+
+---
+
+## Metadata
+- id: ${original.id}
+- tags: published
+''';
+
+        final parsed = await repository.saveRawSource(original.id, newSource);
+
+        expect(parsed.id, original.id);
+        expect(parsed.records.single.values['field'], 'after');
+
+        final reloaded = await repository.getNote(original.id);
+        expect(reloaded?.records.single.values['field'], 'after');
+        expect(reloaded?.tags, contains('published'));
+
+        final disk = await store.readText(original.sourcePath!);
+        expect(disk, equals(newSource));
+      },
+    );
+
+    test(
+      'saveRawSource throws StateError for an unknown note id',
+      () async {
+        await repository.reload();
+        expect(
+          () => repository.saveRawSource('does-not-exist', '# anything'),
+          throwsStateError,
+        );
+      },
+    );
   });
 }

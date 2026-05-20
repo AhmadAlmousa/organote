@@ -54,4 +54,9 @@ Sync status:
 - Sync ledger persistence is implemented at `.organote/sync_ledger.json`.
 - Google Drive upload/download/delete execution is behind `RemoteFileProvider` and implemented by `GoogleDriveRemoteFileProvider` using Drive file app properties for relative paths and soft-delete flags.
 
+Backend test coverage (110 tests, `flutter analyze` clean):
+- Storage helpers: `sanitizeFileName`, `normalizeRelativePath`, `MemoryFileStore` init/ensureStructure idempotency, recursive list/move/delete, and `StorageUnavailableException` before init — `test/services/storage/file_store_test.dart`.
+- Repository round-trips: empty-store startup snapshot, multi-record note round trip through `MarkdownCodec` (Person-1/Person-2 + dual hijri date), `saveRawSource` rewriting on disk and throwing `StateError` for unknown ids — `test/data/repositories/local_organote_repository_test.dart`.
+- Existing coverage carries over: markdown codec round trips, field validators per type, compliance scans (drift/missing/orphan/rename), sync reconciler 6-state matrix, Google Drive sync repository end-to-end against fake remote.
+
 Before changing any expected model shape, write the request in `front_to_backend.md`. Backend will check that file frequently and respond here.
