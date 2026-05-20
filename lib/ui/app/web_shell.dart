@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 
 import '../../domain/models/models.dart';
 import '../screens/note_editor/note_editor_screen.dart';
@@ -21,6 +22,24 @@ import 'overlay_route.dart';
 
 enum _DraftKind { none, note, template }
 
+class _SelectTabIntent extends Intent {
+  const _SelectTabIntent(this.tab);
+
+  final OrgTabId tab;
+}
+
+class _StartDraftIntent extends Intent {
+  const _StartDraftIntent();
+}
+
+class _FocusSearchIntent extends Intent {
+  const _FocusSearchIntent();
+}
+
+class _DismissDraftIntent extends Intent {
+  const _DismissDraftIntent();
+}
+
 class WebShell extends ConsumerStatefulWidget {
   const WebShell({
     super.key,
@@ -38,9 +57,42 @@ class WebShell extends ConsumerStatefulWidget {
 }
 
 class _WebShellState extends ConsumerState<WebShell> {
+  static const Map<ShortcutActivator, Intent>
+  _desktopShortcuts = <ShortcutActivator, Intent>{
+    SingleActivator(LogicalKeyboardKey.digit1, control: true): _SelectTabIntent(
+      OrgTabId.home,
+    ),
+    SingleActivator(LogicalKeyboardKey.digit1, meta: true): _SelectTabIntent(
+      OrgTabId.home,
+    ),
+    SingleActivator(LogicalKeyboardKey.digit2, control: true): _SelectTabIntent(
+      OrgTabId.templates,
+    ),
+    SingleActivator(LogicalKeyboardKey.digit2, meta: true): _SelectTabIntent(
+      OrgTabId.templates,
+    ),
+    SingleActivator(LogicalKeyboardKey.digit3, control: true): _SelectTabIntent(
+      OrgTabId.settings,
+    ),
+    SingleActivator(LogicalKeyboardKey.digit3, meta: true): _SelectTabIntent(
+      OrgTabId.settings,
+    ),
+    SingleActivator(LogicalKeyboardKey.keyN, control: true):
+        _StartDraftIntent(),
+    SingleActivator(LogicalKeyboardKey.keyN, meta: true): _StartDraftIntent(),
+    SingleActivator(LogicalKeyboardKey.keyK, control: true):
+        _FocusSearchIntent(),
+    SingleActivator(LogicalKeyboardKey.keyK, meta: true): _FocusSearchIntent(),
+    SingleActivator(LogicalKeyboardKey.escape): _DismissDraftIntent(),
+  };
+
   final TextEditingController _noteQueryController = TextEditingController();
   final TextEditingController _templateQueryController =
       TextEditingController();
+  final FocusNode _noteQueryFocusNode = FocusNode(debugLabel: 'note-search');
+  final FocusNode _templateQueryFocusNode = FocusNode(
+    debugLabel: 'template-search',
+  );
 
   OrgTabId _tab = OrgTabId.home;
   String _noteQuery = '';
@@ -56,6 +108,8 @@ class _WebShellState extends ConsumerState<WebShell> {
   void dispose() {
     _noteQueryController.dispose();
     _templateQueryController.dispose();
+    _noteQueryFocusNode.dispose();
+    _templateQueryFocusNode.dispose();
     super.dispose();
   }
 
@@ -68,63 +122,89 @@ class _WebShellState extends ConsumerState<WebShell> {
     final activeNoteId = _activeNoteId(notes);
     final activeTemplateId = _activeTemplateId(templates);
 
-    return Scaffold(
-      backgroundColor: palette.bg,
-      body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final listWidth = _listPaneWidth(constraints.maxWidth);
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _SideRail(
-                  current: _tab,
-                  onSelect: (tab) {
-                    setState(() {
-                      _tab = tab;
-                      _draftKind = _DraftKind.none;
-                    });
-                  },
-                ),
-                _Divider(color: palette.border),
-                SizedBox(
-                  width: listWidth,
-                  child: OrgDensity(
-                    level: OrgDensityLevel.compact,
-                    child: _buildListPane(
-                      snapshot: snapshot,
-                      notes: notes,
-                      templates: templates,
-                      activeNoteId: activeNoteId,
-                      activeTemplateId: activeTemplateId,
-                    ),
-                  ),
-                ),
-                _Divider(color: palette.border),
-                Expanded(
-                  child: OrgDensity(
-                    level: OrgDensityLevel.comfortable,
-                    child: _ContentPane(
-                      tab: _tab,
-                      draftKind: _draftKind,
-                      draftTemplateId: _draftTemplateId,
-                      draftSerial: _draftSerial,
-                      activeNoteId: activeNoteId,
-                      activeTemplate: _findTemplateById(
-                        snapshot.templates,
-                        activeTemplateId,
+    return Shortcuts(
+      shortcuts: _desktopShortcuts,
+      child: Actions(
+        actions: <Type, Action<Intent>>{
+          _SelectTabIntent: CallbackAction<_SelectTabIntent>(
+            onInvoke: (intent) {
+              _selectTab(intent.tab);
+              return null;
+            },
+          ),
+          _StartDraftIntent: CallbackAction<_StartDraftIntent>(
+            onInvoke: (_) {
+              _startContextualDraft();
+              return null;
+            },
+          ),
+          _FocusSearchIntent: CallbackAction<_FocusSearchIntent>(
+            onInvoke: (_) {
+              _focusCurrentSearch();
+              return null;
+            },
+          ),
+          _DismissDraftIntent: CallbackAction<_DismissDraftIntent>(
+            onInvoke: (_) {
+              _dismissDraft();
+              return null;
+            },
+          ),
+        },
+        child: Focus(
+          autofocus: true,
+          child: Scaffold(
+            backgroundColor: palette.bg,
+            body: SafeArea(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final listWidth = _listPaneWidth(constraints.maxWidth);
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _SideRail(current: _tab, onSelect: _selectTab),
+                      _Divider(color: palette.border),
+                      SizedBox(
+                        width: listWidth,
+                        child: OrgDensity(
+                          level: OrgDensityLevel.compact,
+                          child: _buildListPane(
+                            snapshot: snapshot,
+                            notes: notes,
+                            templates: templates,
+                            activeNoteId: activeNoteId,
+                            activeTemplateId: activeTemplateId,
+                          ),
+                        ),
                       ),
-                      templateNotes: _notesForTemplate(
-                        snapshot.notes,
-                        activeTemplateId,
+                      _Divider(color: palette.border),
+                      Expanded(
+                        child: OrgDensity(
+                          level: OrgDensityLevel.comfortable,
+                          child: _ContentPane(
+                            tab: _tab,
+                            draftKind: _draftKind,
+                            draftTemplateId: _draftTemplateId,
+                            draftSerial: _draftSerial,
+                            activeNoteId: activeNoteId,
+                            activeTemplate: _findTemplateById(
+                              snapshot.templates,
+                              activeTemplateId,
+                            ),
+                            templateNotes: _notesForTemplate(
+                              snapshot.notes,
+                              activeTemplateId,
+                            ),
+                            settings: widget.settings,
+                          ),
+                        ),
                       ),
-                      settings: widget.settings,
-                    ),
-                  ),
-                ),
-              ],
-            );
-          },
+                    ],
+                  );
+                },
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -152,6 +232,7 @@ class _WebShellState extends ConsumerState<WebShell> {
         selectedNoteId: activeNoteId,
         selectedCategory: _categoryPath,
         queryController: _noteQueryController,
+        queryFocusNode: _noteQueryFocusNode,
         onQueryChanged: (value) => setState(() => _noteQuery = value),
         onCategoryChanged: (value) => setState(() => _categoryPath = value),
         onCreate: () => _startDraft(_DraftKind.note),
@@ -169,6 +250,7 @@ class _WebShellState extends ConsumerState<WebShell> {
         notes: snapshot.notes,
         selectedTemplateId: activeTemplateId,
         queryController: _templateQueryController,
+        queryFocusNode: _templateQueryFocusNode,
         onQueryChanged: (value) => setState(() => _templateQuery = value),
         onCreate: () => _startDraft(_DraftKind.template),
         onSelect: (template) {
@@ -180,6 +262,48 @@ class _WebShellState extends ConsumerState<WebShell> {
       ),
       OrgTabId.settings => _SettingsListPane(snapshot: snapshot),
     };
+  }
+
+  void _selectTab(OrgTabId tab) {
+    setState(() {
+      _tab = tab;
+      _draftKind = _DraftKind.none;
+    });
+  }
+
+  void _startContextualDraft() {
+    if (_tab == OrgTabId.templates) {
+      _startDraft(_DraftKind.template);
+      return;
+    }
+    _startDraft(_DraftKind.note);
+  }
+
+  void _focusCurrentSearch() {
+    final target = _tab == OrgTabId.templates
+        ? OrgTabId.templates
+        : OrgTabId.home;
+    setState(() {
+      _tab = target;
+      _draftKind = _DraftKind.none;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      switch (target) {
+        case OrgTabId.home:
+          _noteQueryFocusNode.requestFocus();
+        case OrgTabId.templates:
+          _templateQueryFocusNode.requestFocus();
+        case OrgTabId.settings:
+          break;
+      }
+    });
+  }
+
+  void _dismissDraft() {
+    FocusManager.instance.primaryFocus?.unfocus();
+    if (_draftKind == _DraftKind.none) return;
+    setState(() => _draftKind = _DraftKind.none);
   }
 
   List<Note> _visibleNotes(LibrarySnapshot snapshot) {
@@ -368,6 +492,7 @@ class _NotesListPane extends StatelessWidget {
     required this.selectedNoteId,
     required this.selectedCategory,
     required this.queryController,
+    required this.queryFocusNode,
     required this.onQueryChanged,
     required this.onCategoryChanged,
     required this.onCreate,
@@ -383,6 +508,7 @@ class _NotesListPane extends StatelessWidget {
   final String? selectedNoteId;
   final String selectedCategory;
   final TextEditingController queryController;
+  final FocusNode queryFocusNode;
   final ValueChanged<String> onQueryChanged;
   final ValueChanged<String> onCategoryChanged;
   final VoidCallback onCreate;
@@ -405,6 +531,7 @@ class _NotesListPane extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
             child: _DenseSearchField(
               controller: queryController,
+              focusNode: queryFocusNode,
               hint: 'Search notes',
               onChanged: onQueryChanged,
             ),
@@ -467,6 +594,7 @@ class _TemplatesListPane extends StatelessWidget {
     required this.notes,
     required this.selectedTemplateId,
     required this.queryController,
+    required this.queryFocusNode,
     required this.onQueryChanged,
     required this.onCreate,
     required this.onSelect,
@@ -476,6 +604,7 @@ class _TemplatesListPane extends StatelessWidget {
   final List<Note> notes;
   final String? selectedTemplateId;
   final TextEditingController queryController;
+  final FocusNode queryFocusNode;
   final ValueChanged<String> onQueryChanged;
   final VoidCallback onCreate;
   final ValueChanged<Template> onSelect;
@@ -499,6 +628,7 @@ class _TemplatesListPane extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
             child: _DenseSearchField(
               controller: queryController,
+              focusNode: queryFocusNode,
               hint: 'Search schemas',
               onChanged: onQueryChanged,
             ),
@@ -668,11 +798,13 @@ class _ListPaneShell extends StatelessWidget {
 class _DenseSearchField extends StatelessWidget {
   const _DenseSearchField({
     required this.controller,
+    required this.focusNode,
     required this.hint,
     required this.onChanged,
   });
 
   final TextEditingController controller;
+  final FocusNode focusNode;
   final String hint;
   final ValueChanged<String> onChanged;
 
@@ -683,6 +815,7 @@ class _DenseSearchField extends StatelessWidget {
       height: 40,
       child: TextField(
         controller: controller,
+        focusNode: focusNode,
         onChanged: onChanged,
         style: Theme.of(context).textTheme.bodySmall?.copyWith(
           color: palette.text,

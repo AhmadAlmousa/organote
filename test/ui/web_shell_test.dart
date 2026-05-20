@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:organote/domain/models/models.dart';
@@ -35,6 +36,66 @@ void main() {
     expect(find.text('Host'), findsOneWidget);
     expect(find.text('Create note'), findsOneWidget);
   });
+
+  testWidgets('WebShell supports desktop keyboard shortcuts', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1280, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    final prefs = await SharedPreferences.getInstance();
+
+    await tester.pumpWidget(
+      _WebShellHarness(prefs: prefs, snapshot: _snapshot()),
+    );
+    await tester.pump();
+
+    expect(find.text('Notes'), findsOneWidget);
+
+    await _pressControlShortcut(tester, LogicalKeyboardKey.digit2);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Schemas'), findsOneWidget);
+    expect(find.text('Server Login'), findsWidgets);
+
+    await _pressControlShortcut(tester, LogicalKeyboardKey.keyN);
+    await tester.pumpAndSettle();
+
+    expect(find.text('New template'), findsOneWidget);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+
+    expect(find.text('New template'), findsNothing);
+    expect(find.text('Fields'), findsOneWidget);
+
+    await _pressControlShortcut(tester, LogicalKeyboardKey.digit1);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Notes'), findsOneWidget);
+
+    await _pressControlShortcut(tester, LogicalKeyboardKey.keyK);
+    await tester.pump();
+
+    final noteSearch = tester.widget<TextField>(
+      find.widgetWithText(TextField, 'Search notes'),
+    );
+    expect(noteSearch.focusNode?.hasFocus, isTrue);
+
+    await _pressControlShortcut(tester, LogicalKeyboardKey.digit3);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Settings'), findsWidgets);
+    expect(find.text('Settings detail'), findsOneWidget);
+  });
+}
+
+Future<void> _pressControlShortcut(
+  WidgetTester tester,
+  LogicalKeyboardKey key,
+) async {
+  await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+  await tester.sendKeyEvent(key);
+  await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
 }
 
 LibrarySnapshot _snapshot() {

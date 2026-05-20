@@ -6,8 +6,8 @@ contracts change.
 
 ## Status
 
-Phases 1 through 11 are shipped on the frontend. `flutter analyze` is clean and
-the current unit/widget suite passes.
+Phases 1 through 11 are shipped on the frontend, and Phase 12 polish is in
+progress. `flutter analyze` is clean and the current unit/widget suite passes.
 
 - Phase 1 (foundation): `lib/ui/theme/**` (OkLCH color tokens, motion curves,
   density tokens, Plus Jakarta + JetBrains Mono via `google_fonts`,
@@ -29,21 +29,38 @@ the current unit/widget suite passes.
   chip, emoji + title, meta line (relative time, records, fields, favorite),
   tag pills. Body renders `RecordCard` per record with `CopyRow` tap-to-copy
   ripples (password masking + mono fields for url/ip/regex/digit-numbers).
-  Image fields render a Phase-6 placeholder. Free-text body shown as a
-  surface card via `SelectableText`. Share button uses
+  Image fields render thumbnails from `AssetRepository.readAssetBytes` and open
+  a scrollable image viewer overlay. Free-text body shown as a surface card via
+  `SelectableText`. Share button uses
   `buildShareText` + `shareOrCopy` (`share_plus`). Delete confirms via a
   spring bottom sheet, pops immediately, then runs `softDeleteNote` in the
-  background (gotcha §7.11). More menu items for Edit-template and Raw-source
-  surface friendly "lands in Phase X" toasts.
+  background (gotcha §7.11). Edit-template and Raw-source menu items now open
+  `TemplateBuilderScreen` and `RawSourceEditorScreen`.
+- Phase 4 (Note Editor): `lib/ui/screens/note_editor/note_editor_screen.dart`
+  is live for existing notes and template-seeded creation. It renders title,
+  emoji, template selector, category selector, tag autocomplete, multi-record
+  editing, pinned/favorite toggles, 2 s autosave, explicit Done flush, and
+  save-while-saving queue drainage before route pop. Coverage added in
+  `test/ui/note_editor_screen_test.dart`.
+- Phase 5 (Template Builder): `lib/ui/screens/template_builder/template_builder_screen.dart`
+  is live for create/edit flows. It includes emoji, name, layout segmented
+  control, default category selection, springy reorderable fields, field-type
+  picker, required toggles, text/number/dropdown/regex/date/image/custom-label
+  options, and save through `TemplateRepository.saveTemplate`.
+- Phase 6 (Specialized fields): Note editing now has typed implementations for
+  dual Gregorian/Hijri date fields, image import/preview, custom label/value
+  pairs, regex live validation, multiline text, and the standard structured
+  fields. Viewer image rows use backend asset reads for thumbnails and full
+  preview.
 - Templates tab progress: `lib/ui/screens/templates/templates_screen.dart` now
   renders from `LibrarySnapshot.templates` and `LibrarySnapshot.notes`. It
   shows the stats banner (total / used / unused / total fields), used and unused
   sections, and `lib/ui/widgets/template_card.dart` cards with field previews,
   required counts, layout pills, and relative update time. Used templates expose
-  an associated-notes bottom sheet that can open `NoteViewerScreen`; unused
-  templates surface the create note CTA as a Phase-4 placeholder until the note
-  editor exists. Template create/edit actions remain Phase-5 placeholders until
-  the builder is shipped. Coverage added in `test/ui/templates_screen_test.dart`.
+  an associated-notes bottom sheet that can open `NoteViewerScreen`; create-note
+  actions open `NoteEditorScreen(templateId: ...)`, and create/edit schema
+  actions open `TemplateBuilderScreen`. Coverage added in
+  `test/ui/templates_screen_test.dart`.
 - Phase 8 (Settings): `lib/ui/screens/settings/settings_screen.dart` is live.
   It renders Sync, Customization, Data, and Compliance sections from existing
   repository contracts. Sync can connect Google Drive and run `syncNow()`;
@@ -78,6 +95,11 @@ the current unit/widget suite passes.
   create-note, and edit-schema routes. Settings keeps the existing settings
   screen in the content pane with a compact section summary list. Coverage added
   in `test/ui/web_shell_test.dart`.
+- Phase 12 (Polish): Desktop keyboard shortcuts are now wired in
+  `lib/ui/app/web_shell.dart`: Ctrl/Cmd+1/2/3 switches panes, Ctrl/Cmd+N creates
+  a contextual note/template draft, Ctrl/Cmd+K focuses the active search pane,
+  and Escape dismisses an unsaved draft/focus. Coverage added in
+  `test/ui/web_shell_test.dart`.
 
 ### Unilateral decisions taken (please review)
 
@@ -105,8 +127,8 @@ Acknowledgements:
 
 1. Packages — confirmed present. ✓
 2. `getRawSource(id)` — added and now in use by the Phase 10 raw source editor. ✓
-3. `AssetRepository.readAssetBytes(relativePath)` — added. Frontend will use
-   it for image-field thumbnails in Phase 6. ✓
+3. `AssetRepository.readAssetBytes(relativePath)` — added and now used for
+   editor/viewer image previews. ✓
 4. `setPinned(id, v)` / `setFavorite(id, v)` — added and **now in use** in
    `home_screen.dart`. ✓
 5. `LibrarySnapshot.trash` + `watchTrash()` — added. Frontend will use them
@@ -135,6 +157,10 @@ Phase 12 frontend follow-up: `NoteEditorScreen` now queues another structured
 save when edits happen while `saveStructuredNote` is still in flight, then drains
 that queued save before route pop completion. This covers the sync push-lock
 gotcha from `plan.md` on the frontend side and has widget regression coverage.
+
+Phase 12 frontend follow-up: `WebShell` now has desktop keyboard shortcuts for
+tab switching, contextual create, search focus, and draft dismissal. This is
+frontend-only and does not change backend contracts.
 
 ---
 
