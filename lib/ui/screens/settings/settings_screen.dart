@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../domain/models/models.dart';
 import '../../../services/storage/file_store.dart';
+import '../../app/overlay_route.dart';
 import '../../state/app_providers.dart';
 import '../../state/library_provider.dart';
 import '../../theme/color_tokens.dart';
@@ -11,6 +12,7 @@ import '../../theme/motion.dart';
 import '../../theme/theme_controller.dart';
 import '../../widgets/org_icon_button.dart';
 import '../../widgets/org_toast.dart';
+import 'phase9_screens.dart';
 
 final _settingsStorageStatusProvider = FutureProvider<StorageStatus>((ref) {
   return ref.watch(fileStoreProvider).getStatus();
@@ -128,6 +130,31 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
+  void _openComplianceReview() {
+    Navigator.of(context).push(
+      OrgOverlayRoute<void>(builder: (_) => const ComplianceReviewScreen()),
+    );
+  }
+
+  void _openTrash() {
+    final route = OrgOverlayRoute<void>(builder: (_) => const TrashScreen());
+    Navigator.of(context).push(route);
+  }
+
+  void _openBackupRestore() {
+    final route = OrgOverlayRoute<void>(
+      builder: (_) => const BackupRestoreScreen(),
+    );
+    Navigator.of(context).push(route);
+  }
+
+  void _openDangerZone() {
+    final route = OrgOverlayRoute<void>(
+      builder: (_) => const DangerZoneScreen(),
+    );
+    Navigator.of(context).push(route);
+  }
+
   @override
   Widget build(BuildContext context) {
     final palette = OrgPaletteScope.of(context);
@@ -199,6 +226,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                           storage: storage,
                                           busy: _storageBusy,
                                           onChooseRoot: _chooseStorageRoot,
+                                          onOpenTrash: _openTrash,
+                                          onOpenBackup: _openBackupRestore,
                                         ),
                                       ],
                                     ),
@@ -213,6 +242,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                           summary: snapshot.complianceSummary,
                                           busy: _scanBusy,
                                           onScan: _scanCompliance,
+                                          onReview: _openComplianceReview,
+                                        ),
+                                        const SizedBox(height: 14),
+                                        _DangerZoneSection(
+                                          onOpen: _openDangerZone,
                                         ),
                                       ],
                                     ),
@@ -234,13 +268,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                 storage: storage,
                                 busy: _storageBusy,
                                 onChooseRoot: _chooseStorageRoot,
+                                onOpenTrash: _openTrash,
+                                onOpenBackup: _openBackupRestore,
                               ),
                               const SizedBox(height: 14),
                               _ComplianceSection(
                                 summary: snapshot.complianceSummary,
                                 busy: _scanBusy,
                                 onScan: _scanCompliance,
+                                onReview: _openComplianceReview,
                               ),
+                              const SizedBox(height: 14),
+                              _DangerZoneSection(onOpen: _openDangerZone),
                             ],
                           ],
                         ),
@@ -590,12 +629,16 @@ class _DataSection extends StatelessWidget {
     required this.storage,
     required this.busy,
     required this.onChooseRoot,
+    required this.onOpenTrash,
+    required this.onOpenBackup,
   });
 
   final LibrarySnapshot snapshot;
   final AsyncValue<StorageStatus> storage;
   final bool busy;
   final VoidCallback onChooseRoot;
+  final VoidCallback onOpenTrash;
+  final VoidCallback onOpenBackup;
 
   @override
   Widget build(BuildContext context) {
@@ -657,6 +700,26 @@ class _DataSection extends StatelessWidget {
             label: busy ? 'Working' : 'Choose storage',
             onTap: busy ? null : onChooseRoot,
           ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: _FullWidthButton(
+                  icon: Icons.delete_outline_rounded,
+                  label: 'Open trash',
+                  onTap: onOpenTrash,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _FullWidthButton(
+                  icon: Icons.archive_rounded,
+                  label: 'Backup',
+                  onTap: onOpenBackup,
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );
@@ -668,11 +731,13 @@ class _ComplianceSection extends StatelessWidget {
     required this.summary,
     required this.busy,
     required this.onScan,
+    required this.onReview,
   });
 
   final ComplianceSummary summary;
   final bool busy;
   final VoidCallback onScan;
+  final VoidCallback onReview;
 
   @override
   Widget build(BuildContext context) {
@@ -712,10 +777,59 @@ class _ComplianceSection extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _FullWidthButton(
+                  icon: Icons.rule_folder_rounded,
+                  label: 'Review issues',
+                  onTap: onReview,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _FullWidthButton(
+                  icon: busy
+                      ? Icons.hourglass_top_rounded
+                      : Icons.refresh_rounded,
+                  label: busy ? 'Scanning' : 'Scan now',
+                  onTap: busy ? null : onScan,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DangerZoneSection extends StatelessWidget {
+  const _DangerZoneSection({required this.onOpen});
+
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = OrgPaletteScope.of(context);
+    return _SettingsSection(
+      icon: Icons.warning_rounded,
+      title: 'Danger Zone',
+      subtitle: 'Permanent local storage actions',
+      trailing: _StatusPill(label: 'Careful', color: palette.danger),
+      child: Column(
+        children: [
+          _InfoRow(
+            icon: Icons.delete_forever_rounded,
+            label: 'Wipe flow',
+            value: 'Typed confirm',
+          ),
+          const SizedBox(height: 12),
           _FullWidthButton(
-            icon: busy ? Icons.hourglass_top_rounded : Icons.refresh_rounded,
-            label: busy ? 'Scanning' : 'Scan now',
-            onTap: busy ? null : onScan,
+            icon: Icons.warning_rounded,
+            label: 'Open danger zone',
+            onTap: onOpen,
+            destructive: true,
           ),
         ],
       ),
@@ -873,11 +987,13 @@ class _FullWidthButton extends StatefulWidget {
     required this.icon,
     required this.label,
     required this.onTap,
+    this.destructive = false,
   });
 
   final IconData icon;
   final String label;
   final VoidCallback? onTap;
+  final bool destructive;
 
   @override
   State<_FullWidthButton> createState() => _FullWidthButtonState();
@@ -890,6 +1006,7 @@ class _FullWidthButtonState extends State<_FullWidthButton> {
   Widget build(BuildContext context) {
     final palette = OrgPaletteScope.of(context);
     final disabled = widget.onTap == null;
+    final activeColor = widget.destructive ? palette.danger : palette.accent;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTapDown: disabled ? null : (_) => setState(() => _pressed = true),
@@ -903,12 +1020,13 @@ class _FullWidthButtonState extends State<_FullWidthButton> {
         child: Container(
           height: 42,
           decoration: BoxDecoration(
-            color: disabled ? palette.surfaceHigh : palette.accent,
+            color: disabled ? palette.surfaceHigh : activeColor,
             borderRadius: BorderRadius.circular(13),
           ),
           alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
           child: Row(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
                 widget.icon,
@@ -916,12 +1034,16 @@ class _FullWidthButtonState extends State<_FullWidthButton> {
                 color: disabled ? palette.textTertiary : palette.onAccent,
               ),
               const SizedBox(width: 7),
-              Text(
-                widget.label,
-                style: TextStyle(
-                  color: disabled ? palette.textTertiary : palette.onAccent,
-                  fontWeight: FontWeight.w900,
-                  fontSize: 13,
+              Flexible(
+                child: Text(
+                  widget.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: disabled ? palette.textTertiary : palette.onAccent,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 13,
+                  ),
                 ),
               ),
             ],
@@ -1077,7 +1199,7 @@ class _SwitchRow extends StatelessWidget {
           Switch.adaptive(
             value: value,
             onChanged: enabled ? onChanged : null,
-            activeColor: palette.accent,
+            activeThumbColor: palette.accent,
             materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
           ),
         ],

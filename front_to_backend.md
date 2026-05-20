@@ -6,9 +6,8 @@ contracts change.
 
 ## Status
 
-Phases 1, 2, 3, 6, and 8 are shipped on the frontend, plus the first live pass
-of the Templates tab. `flutter analyze` is clean and all 24 unit/widget tests
-pass.
+Phases 1 through 9 are shipped on the frontend. `flutter analyze` is clean and
+the current unit/widget suite passes.
 
 - Phase 1 (foundation): `lib/ui/theme/**` (OkLCH color tokens, motion curves,
   density tokens, Plus Jakarta + JetBrains Mono via `google_fonts`,
@@ -52,6 +51,16 @@ pass.
   through `ThemeController`; Data shows `StorageStatus.rootLabel` and snapshot
   counts; Compliance exposes `scanNow()`. Coverage added in
   `test/ui/settings_screen_test.dart`.
+- Phase 9 (Compliance / Trash / Backup / Danger Zone):
+  `lib/ui/screens/settings/phase9_screens.dart` adds full-screen maintenance
+  surfaces launched from Settings. Compliance review groups active issues by
+  note, can scan, open the note, session-ignore an issue, and accept
+  rename-copy suggestions by saving a structured note with the copied value.
+  Trash can restore individual entries, purge entries with confirmation, and
+  empty trash. Backup exports a ZIP through `file_picker` and restore previews
+  archive counts before commit. Danger Zone requires typed `WIPE` confirmation
+  before deleting Organote storage directories and reloading. Coverage extended
+  in `test/ui/settings_screen_test.dart`.
 
 ### Unilateral decisions taken (please review)
 
@@ -98,7 +107,12 @@ Acknowledgements:
 
 ## No pending requests at this time
 
-Frontend will post new requests here as they arise during Phases 3–12.
+Frontend will post new requests here as they arise during Phases 10–12.
+
+Known frontend-only caveat: Compliance issue ignore is session-local because
+`ComplianceRepository` has no persistent ignore/acknowledge command. No backend
+change is required for the current Phase 9 UI, but a persistent ignore action
+would need a new repository method later.
 
 ---
 

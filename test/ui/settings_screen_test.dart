@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -51,6 +50,10 @@ void main() {
     expect(find.text('Customization'), findsOneWidget);
     expect(find.text('Data'), findsOneWidget);
     expect(find.text('Compliance'), findsOneWidget);
+    expect(find.text('Danger Zone'), findsOneWidget);
+    expect(find.text('Open trash'), findsOneWidget);
+    expect(find.text('Backup'), findsOneWidget);
+    expect(find.text('Review issues'), findsOneWidget);
     expect(find.text('Google Drive'), findsOneWidget);
     expect(find.text('Connected'), findsOneWidget);
     expect(find.text('memory'), findsWidgets);
@@ -98,6 +101,116 @@ void main() {
     await tester.pump();
     expect(syncRepo.syncCalls, 1);
   });
+
+  testWidgets('SettingsScreen opens trash and restores an entry', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(500, 1700));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final snapshot = _snapshot();
+    final noteRepo = _FakeNoteRepo();
+    await tester.pumpWidget(
+      _SettingsHarness(
+        prefs: await _prefs(),
+        snapshot: snapshot,
+        fileStore: _FakeFileStore(
+          status: const StorageStatus.available(rootLabel: 'memory'),
+        ),
+        syncRepository: _FakeSyncRepo(
+          status: const SyncStatus(phase: SyncPhase.idle, signedIn: true),
+        ),
+        complianceRepository: _FakeComplianceRepo(
+          summary: snapshot.complianceSummary,
+        ),
+        noteRepository: noteRepo,
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.text('Open trash'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('prod.md'), findsOneWidget);
+
+    await tester.tap(find.text('Restore'));
+    await tester.pump();
+
+    expect(noteRepo.restoredIds, <String>['trash-1']);
+  });
+
+  testWidgets('Compliance review accepts rename-copy suggestions', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(500, 1800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final note = Note(
+      id: 'prod',
+      title: 'Prod',
+      templateId: 'server',
+      templateName: 'Server',
+      templateVersion: 1,
+      records: const <NoteRecord>[
+        NoteRecord(
+          label: 'Server 1',
+          values: <String, String>{'Old Host': 'db'},
+        ),
+      ],
+    );
+    final snapshot = LibrarySnapshot(
+      notes: <Note>[note],
+      templates: const <Template>[
+        Template(id: 'server', name: 'Server', version: 1, fields: []),
+      ],
+      complianceSummary: const ComplianceSummary(
+        issues: <ComplianceIssue>[
+          ComplianceIssue(
+            id: 'rename-1',
+            type: ComplianceIssueType.renameCopySuggestion,
+            severity: ComplianceSeverity.info,
+            message: 'Copy "Old Host" into renamed field "Host".',
+            noteId: 'prod',
+            templateId: 'server',
+            fieldLabel: 'Host',
+            legacyFieldLabel: 'Old Host',
+          ),
+        ],
+      ),
+    );
+    final noteRepo = _FakeNoteRepo(note: note);
+    await tester.pumpWidget(
+      _SettingsHarness(
+        prefs: await _prefs(),
+        snapshot: snapshot,
+        fileStore: _FakeFileStore(
+          status: const StorageStatus.available(rootLabel: 'memory'),
+        ),
+        syncRepository: _FakeSyncRepo(
+          status: const SyncStatus(phase: SyncPhase.idle, signedIn: true),
+        ),
+        complianceRepository: _FakeComplianceRepo(
+          summary: snapshot.complianceSummary,
+        ),
+        noteRepository: noteRepo,
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.text('Review issues'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Copy "Old Host" into renamed field "Host".'),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.text('Accept rename'));
+    await tester.pump();
+
+    expect(noteRepo.savedInputs, hasLength(1));
+    expect(noteRepo.savedInputs.single.records.single.values['Host'], 'db');
+  });
 }
 
 Future<SharedPreferences> _prefs() async {
@@ -143,6 +256,7 @@ class _SettingsHarness extends StatelessWidget {
     required this.fileStore,
     required this.syncRepository,
     required this.complianceRepository,
+    this.noteRepository,
   });
 
   final SharedPreferences prefs;
@@ -150,6 +264,7 @@ class _SettingsHarness extends StatelessWidget {
   final FileStore fileStore;
   final SyncRepository syncRepository;
   final ComplianceRepository complianceRepository;
+  final NoteRepository? noteRepository;
 
   @override
   Widget build(BuildContext context) {
@@ -165,6 +280,8 @@ class _SettingsHarness extends StatelessWidget {
         libraryRepositoryProvider.overrideWithValue(_FakeLibraryRepo(snapshot)),
         syncRepositoryProvider.overrideWithValue(syncRepository),
         complianceRepositoryProvider.overrideWithValue(complianceRepository),
+        if (noteRepository != null)
+          noteRepositoryProvider.overrideWithValue(noteRepository!),
       ],
       child: OrgPaletteScope(
         palette: palette,
@@ -178,6 +295,59 @@ class _SettingsHarness extends StatelessWidget {
       ),
     );
   }
+}
+
+class _FakeNoteRepo implements NoteRepository {
+  _FakeNoteRepo({this.note});
+
+  final Note? note;
+  final List<String> restoredIds = <String>[];
+  final List<String> purgedIds = <String>[];
+  final List<NoteInput> savedInputs = <NoteInput>[];
+
+  @override
+  Future<Note?> getNote(String id) async => note?.id == id ? note : null;
+
+  @override
+  Future<String> getRawSource(String id) async => '';
+
+  @override
+  Future<void> purgeTrashEntry(String trashEntryId) async {
+    purgedIds.add(trashEntryId);
+  }
+
+  @override
+  Future<void> restoreFromTrash(String trashEntryId) async {
+    restoredIds.add(trashEntryId);
+  }
+
+  @override
+  Future<Note> saveRawSource(String id, String source) async {
+    return note!;
+  }
+
+  @override
+  Future<Note> saveStructuredNote(NoteInput input) async {
+    savedInputs.add(input);
+    return Note(
+      id: input.id ?? 'saved',
+      title: input.title,
+      records: input.records,
+    );
+  }
+
+  @override
+  Future<void> setFavorite(String noteId, bool value) async {}
+
+  @override
+  Future<void> setPinned(String noteId, bool value) async {}
+
+  @override
+  Future<void> softDeleteNote(String id) async {}
+
+  @override
+  Stream<List<TrashEntry>> watchTrash() =>
+      const Stream<List<TrashEntry>>.empty();
 }
 
 class _FakeLibraryRepo implements LibraryRepository {
