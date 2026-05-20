@@ -6,8 +6,9 @@ contracts change.
 
 ## Status
 
-Phases 1, 2, and 3 are shipped on the frontend, plus the first live pass of the
-Templates tab. `flutter analyze` is clean and all 16 unit/widget tests pass.
+Phases 1, 2, 3, 6, and 8 are shipped on the frontend, plus the first live pass
+of the Templates tab. `flutter analyze` is clean and all 24 unit/widget tests
+pass.
 
 - Phase 1 (foundation): `lib/ui/theme/**` (OkLCH color tokens, motion curves,
   density tokens, Plus Jakarta + JetBrains Mono via `google_fonts`,
@@ -44,6 +45,13 @@ Templates tab. `flutter analyze` is clean and all 16 unit/widget tests pass.
   templates surface the create note CTA as a Phase-4 placeholder until the note
   editor exists. Template create/edit actions remain Phase-5 placeholders until
   the builder is shipped. Coverage added in `test/ui/templates_screen_test.dart`.
+- Phase 8 (Settings): `lib/ui/screens/settings/settings_screen.dart` is live.
+  It renders Sync, Customization, Data, and Compliance sections from existing
+  repository contracts. Sync can connect Google Drive and run `syncNow()`;
+  Customization persists theme, accent, OLED, and loading animation preferences
+  through `ThemeController`; Data shows `StorageStatus.rootLabel` and snapshot
+  counts; Compliance exposes `scanNow()`. Coverage added in
+  `test/ui/settings_screen_test.dart`.
 
 ### Unilateral decisions taken (please review)
 

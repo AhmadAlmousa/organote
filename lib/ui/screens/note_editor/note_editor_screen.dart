@@ -13,12 +13,15 @@ import '../../theme/motion.dart';
 import '../../util/category_color.dart';
 import '../../widgets/category_selector.dart';
 import '../../widgets/emoji_picker_button.dart';
+import '../../widgets/form_field/custom_label_field_impl.dart';
+import '../../widgets/form_field/date_field_impl.dart';
 import '../../widgets/form_field/dropdown_field_impl.dart';
 import '../../widgets/form_field/form_field_host.dart';
+import '../../widgets/form_field/image_field_impl.dart';
 import '../../widgets/form_field/ip_field_impl.dart';
 import '../../widgets/form_field/number_field_impl.dart';
 import '../../widgets/form_field/password_field_impl.dart';
-import '../../widgets/form_field/placeholder_field_impl.dart';
+import '../../widgets/form_field/regex_field_impl.dart';
 import '../../widgets/form_field/text_field_impl.dart';
 import '../../widgets/form_field/url_field_impl.dart';
 import '../../widgets/org_icon_button.dart';
@@ -281,6 +284,7 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
                         fieldErrors: _fieldErrors,
                         onRemove: () => _removeRecord(index),
                         onTouched: _touch,
+                        ensureNoteIdForAsset: _ensureNoteIdForAsset,
                       );
                     },
                   ),
@@ -438,7 +442,10 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
       await _flush();
     }
     if (!mounted) return;
-    Navigator.of(context).maybePop();
+    final navigator = Navigator.of(context);
+    if (navigator.canPop()) {
+      navigator.pop();
+    }
   }
 
   Future<void> _flush() async {
@@ -477,6 +484,22 @@ class _NoteEditorScreenState extends ConsumerState<NoteEditorScreen> {
     } finally {
       _flushing = false;
     }
+  }
+
+  Future<String?> _ensureNoteIdForAsset() async {
+    _debounce?.cancel();
+    while (_flushing || _status == _SaveStatus.saving) {
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+    }
+    if (_currentNoteId == null ||
+        _status == _SaveStatus.dirty ||
+        _status == _SaveStatus.error) {
+      await _flush();
+    }
+    while (_flushing || _status == _SaveStatus.saving) {
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+    }
+    return _currentNoteId;
   }
 
   bool _hasContent(NoteInput input) {
@@ -1118,6 +1141,7 @@ class _RecordEditorCard extends StatefulWidget {
     required this.fieldErrors,
     required this.onRemove,
     required this.onTouched,
+    required this.ensureNoteIdForAsset,
   });
 
   final int index;
@@ -1129,6 +1153,7 @@ class _RecordEditorCard extends StatefulWidget {
   final Map<String, String> fieldErrors;
   final VoidCallback onRemove;
   final VoidCallback onTouched;
+  final Future<String?> Function() ensureNoteIdForAsset;
 
   @override
   State<_RecordEditorCard> createState() => _RecordEditorCardState();
@@ -1253,6 +1278,7 @@ class _RecordEditorCardState extends State<_RecordEditorCard> {
                 accent: widget.accent,
                 fieldErrors: widget.fieldErrors,
                 onTouched: widget.onTouched,
+                ensureNoteIdForAsset: widget.ensureNoteIdForAsset,
               ),
             ),
             secondChild: const SizedBox(width: double.infinity, height: 0),
@@ -1263,13 +1289,14 @@ class _RecordEditorCardState extends State<_RecordEditorCard> {
   }
 }
 
-class _RecordFields extends StatelessWidget {
+class _RecordFields extends ConsumerWidget {
   const _RecordFields({
     required this.record,
     required this.template,
     required this.accent,
     required this.fieldErrors,
     required this.onTouched,
+    required this.ensureNoteIdForAsset,
   });
 
   final _RecordDraft record;
@@ -1277,9 +1304,10 @@ class _RecordFields extends StatelessWidget {
   final Color accent;
   final Map<String, String> fieldErrors;
   final VoidCallback onTouched;
+  final Future<String?> Function() ensureNoteIdForAsset;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final template = this.template;
     if (template == null || template.fields.isEmpty) {
       return _FreeformFieldList(
@@ -1293,13 +1321,13 @@ class _RecordFields extends StatelessWidget {
       children: [
         for (var i = 0; i < template.fields.length; i += 1) ...[
           if (i > 0) const SizedBox(height: 12),
-          _buildField(template.fields[i]),
+          _buildField(ref, template.fields[i]),
         ],
       ],
     );
   }
 
-  Widget _buildField(TemplateField field) {
+  Widget _buildField(WidgetRef ref, TemplateField field) {
     final controller = record.fieldControllers[field.id]!;
     final error = fieldErrors['${record.id ?? ''}::${field.id}'];
     switch (field.type) {
@@ -1359,10 +1387,33 @@ class _RecordFields extends StatelessWidget {
           onChanged: onTouched,
         );
       case TemplateFieldType.date:
+        return DateFieldImpl(
+          field: field,
+          controller: controller,
+          onChanged: onTouched,
+          error: error,
+          accent: accent,
+        );
       case TemplateFieldType.image:
+        return ImageFieldImpl(
+          field: field,
+          controller: controller,
+          assetRepository: ref.read(assetRepositoryProvider),
+          ensureNoteId: ensureNoteIdForAsset,
+          onChanged: onTouched,
+          error: error,
+          accent: accent,
+        );
       case TemplateFieldType.customLabel:
+        return CustomLabelFieldImpl(
+          field: field,
+          controller: controller,
+          onChanged: onTouched,
+          error: error,
+          accent: accent,
+        );
       case TemplateFieldType.regex:
-        return PlaceholderFieldImpl(
+        return RegexFieldImpl(
           field: field,
           controller: controller,
           onChanged: onTouched,

@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -56,7 +58,7 @@ void main() {
       await tester.pump();
 
       expect(find.text('Server Login'), findsWidgets);
-      expect(find.text('Server Login 1'), findsOneWidget);
+      expect(find.text('Server Login 1'), findsWidgets);
       expect(find.text('HOST'), findsOneWidget);
       expect(find.text('PASSWORD'), findsOneWidget);
       expect(find.text('ENVIRONMENT'), findsOneWidget);
@@ -92,6 +94,9 @@ void main() {
     testWidgets('add record adds a draft and remove tears it down', (
       tester,
     ) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
       final fake = _FakeNoteRepo();
       await tester.pumpWidget(
         _EditorHarness(
@@ -102,7 +107,7 @@ void main() {
       );
       await tester.pump();
 
-      expect(find.text('Server Login 1'), findsOneWidget);
+      expect(find.text('Server Login 1'), findsWidgets);
       expect(find.text('Server Login 2'), findsNothing);
 
       final addButton = find.text('Add server login record');
@@ -110,8 +115,8 @@ void main() {
       await tester.tap(addButton);
       await tester.pumpAndSettle();
 
-      expect(find.text('Server Login 1'), findsOneWidget);
-      expect(find.text('Server Login 2'), findsOneWidget);
+      expect(find.text('Server Login 1'), findsWidgets);
+      expect(find.text('Server Login 2'), findsWidgets);
 
       final removeButtons = find.byTooltip('Remove record');
       expect(removeButtons, findsNWidgets(2));
@@ -140,10 +145,78 @@ void main() {
       await tester.pump(const Duration(milliseconds: 200));
 
       await tester.tap(find.text('Done').first);
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
 
       expect(fake.savedInputs, hasLength(1));
       expect(fake.savedInputs.single.title, 'Quick draft');
+    });
+
+    testWidgets('specialized fields save formatted values', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final specialized = Template(
+        id: 'incident',
+        name: 'Incident',
+        version: 1,
+        fields: const <TemplateField>[
+          TemplateField(
+            id: 'follow_up',
+            label: 'Follow-up',
+            type: TemplateFieldType.date,
+            calendarMode: CalendarMode.dual,
+          ),
+          TemplateField(
+            id: 'ticket',
+            label: 'Ticket',
+            type: TemplateFieldType.regex,
+            regex: r'^[A-Z]{3}-\d{3}$',
+            hint: 'ABC-123',
+          ),
+          TemplateField(
+            id: 'contact',
+            label: 'Contact',
+            type: TemplateFieldType.customLabel,
+          ),
+        ],
+      );
+      final fake = _FakeNoteRepo();
+      await tester.pumpWidget(
+        _EditorHarness(
+          snapshot: LibrarySnapshot(templates: <Template>[specialized]),
+          noteRepo: fake,
+          templateId: specialized.id,
+        ),
+      );
+      await tester.pump();
+
+      await tester.ensureVisible(find.text('Today'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Today'));
+      await tester.pump();
+      await tester.enterText(
+        find.byKey(const Key('regex-field-ticket')),
+        'ABC-123',
+      );
+      await tester.enterText(
+        find.byKey(const Key('custom-label-contact-label')),
+        'Owner',
+      );
+      await tester.enterText(
+        find.byKey(const Key('custom-label-contact-value')),
+        'Ahmed',
+      );
+
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pump();
+
+      expect(fake.savedInputs, isNotEmpty);
+      final values = fake.savedInputs.last.records.single.values;
+      expect(values['Follow-up'], contains(' | '));
+      expect(values['Follow-up'], endsWith(' H'));
+      expect(values['Ticket'], 'ABC-123');
+      expect(values['Contact'], 'Owner: Ahmed');
     });
   });
 }
@@ -170,6 +243,7 @@ class _EditorHarness extends StatelessWidget {
         librarySnapshotProvider.overrideWithValue(snapshot),
         noteRepositoryProvider.overrideWithValue(noteRepo),
         categoryRepositoryProvider.overrideWithValue(_StubCategoryRepo()),
+        assetRepositoryProvider.overrideWithValue(_StubAssetRepo()),
       ],
       child: OrgPaletteScope(
         palette: palette,
@@ -249,3 +323,25 @@ class _StubCategoryRepo implements CategoryRepository {
   Future<void> deleteCategory(String path) async {}
 }
 
+class _StubAssetRepo implements AssetRepository {
+  @override
+  Future<AssetRef> importImageForNote({
+    required String noteId,
+    required String originalName,
+    required List<int> bytes,
+    String? mediaType,
+  }) async {
+    return AssetRef(
+      noteId: noteId,
+      relativePath: 'assets/$noteId/$originalName',
+      originalName: originalName,
+      sizeBytes: bytes.length,
+      mediaType: mediaType,
+    );
+  }
+
+  @override
+  Future<Uint8List> readAssetBytes(String relativePath) async {
+    return Uint8List.fromList(<int>[]);
+  }
+}

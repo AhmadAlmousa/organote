@@ -1,9 +1,11 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../domain/models/models.dart';
+import '../../../domain/repositories/repositories.dart';
 import '../../state/app_providers.dart';
 import '../../state/library_provider.dart';
 import '../../theme/color_tokens.dart';
@@ -422,10 +424,12 @@ class _ViewerBodyState extends ConsumerState<_ViewerBody> {
     final mask = field?.type == TemplateFieldType.password;
     final label = field?.label ?? key;
     if (field?.type == TemplateFieldType.image) {
-      return _ImagePlaceholderRow(
+      return _ImageFieldRow(
         label: label,
         value: value,
-        palette: OrgPaletteScope.of(context),
+        accent: widget.accent,
+        accentSoft: widget.accentSoft,
+        assetRepository: ref.read(assetRepositoryProvider),
       );
     }
     return CopyRow(
@@ -1023,19 +1027,91 @@ class _ShareRowState extends State<_ShareRow> {
   }
 }
 
-class _ImagePlaceholderRow extends StatelessWidget {
-  const _ImagePlaceholderRow({
+class _ImageFieldRow extends StatefulWidget {
+  const _ImageFieldRow({
     required this.label,
     required this.value,
-    required this.palette,
+    required this.accent,
+    required this.accentSoft,
+    required this.assetRepository,
   });
 
   final String label;
   final String value;
-  final OrgPalette palette;
+  final Color accent;
+  final Color accentSoft;
+  final AssetRepository assetRepository;
+
+  @override
+  State<_ImageFieldRow> createState() => _ImageFieldRowState();
+}
+
+class _ImageFieldRowState extends State<_ImageFieldRow> {
+  String? _path;
+  Future<Uint8List>? _future;
+
+  Future<Uint8List>? _futureFor(String path) {
+    if (path.isEmpty) return null;
+    if (_path != path) {
+      _path = path;
+      _future = widget.assetRepository.readAssetBytes(path);
+    }
+    return _future;
+  }
+
+  Future<void> _copyPath(BuildContext context) async {
+    final path = widget.value.trim();
+    if (path.isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: path));
+    if (!context.mounted) return;
+    showOrgToast(
+      context,
+      message: 'Copied ${widget.label}',
+      icon: Icons.content_paste_rounded,
+      background: widget.accent,
+    );
+  }
+
+  void _openPreview(BuildContext context, Uint8List bytes) {
+    final palette = OrgPaletteScope.of(context);
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return Dialog.fullscreen(
+          backgroundColor: palette.bg,
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: InteractiveViewer(
+                  minScale: 0.7,
+                  maxScale: 5,
+                  child: Center(
+                    child: Image.memory(bytes, fit: BoxFit.contain),
+                  ),
+                ),
+              ),
+              PositionedDirectional(
+                top: MediaQuery.paddingOf(dialogContext).top + 10,
+                start: 12,
+                child: OrgIconButton(
+                  icon: Icons.close_rounded,
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  tooltip: 'Close',
+                  size: 40,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    final palette = OrgPaletteScope.of(context);
+    final path = widget.value.trim();
+    final future = _futureFor(path);
     return Padding(
       padding: const EdgeInsetsDirectional.symmetric(
         horizontal: 4,
@@ -1049,19 +1125,13 @@ class _ImagePlaceholderRow extends StatelessWidget {
           border: Border.all(color: palette.border),
         ),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: palette.surfaceHigh,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(
-                Icons.image_outlined,
-                size: 18,
-                color: palette.textSecondary,
-              ),
+            _ViewerImageThumb(
+              future: future,
+              palette: palette,
+              accent: widget.accent,
+              onOpen: (bytes) => _openPreview(context, bytes),
             ),
             const SizedBox(width: 10),
             Expanded(
@@ -1070,7 +1140,7 @@ class _ImagePlaceholderRow extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    label.toUpperCase(),
+                    widget.label.toUpperCase(),
                     style: TextStyle(
                       color: palette.textTertiary,
                       fontSize: 10.5,
@@ -1080,9 +1150,11 @@ class _ImagePlaceholderRow extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    value.isEmpty ? '(no image)' : value,
+                    path.isEmpty ? '(no image)' : path,
                     style: TextStyle(
-                      color: palette.textSecondary,
+                      color: path.isEmpty
+                          ? palette.textTertiary
+                          : palette.textSecondary,
                       fontSize: 12.5,
                       fontWeight: FontWeight.w600,
                       fontFamily: 'JetBrainsMono',
@@ -1094,18 +1166,119 @@ class _ImagePlaceholderRow extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
-            Text(
-              'PHASE 6',
-              style: TextStyle(
-                color: palette.textTertiary,
-                fontSize: 10,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.06,
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => _copyPath(context),
+              child: Container(
+                width: 30,
+                height: 30,
+                decoration: BoxDecoration(
+                  color: path.isEmpty ? Colors.transparent : widget.accentSoft,
+                  borderRadius: BorderRadius.circular(9),
+                  border: Border.all(
+                    color: path.isEmpty ? palette.border : Colors.transparent,
+                  ),
+                ),
+                child: Icon(
+                  Icons.copy_rounded,
+                  size: 14,
+                  color: path.isEmpty ? palette.textTertiary : widget.accent,
+                ),
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _ViewerImageThumb extends StatelessWidget {
+  const _ViewerImageThumb({
+    required this.future,
+    required this.palette,
+    required this.accent,
+    required this.onOpen,
+  });
+
+  final Future<Uint8List>? future;
+  final OrgPalette palette;
+  final Color accent;
+  final ValueChanged<Uint8List> onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    if (future == null) {
+      return _ThumbFrame(
+        palette: palette,
+        child: Icon(
+          Icons.image_outlined,
+          size: 20,
+          color: palette.textSecondary,
+        ),
+      );
+    }
+    return FutureBuilder<Uint8List>(
+      future: future,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return _ThumbFrame(
+            palette: palette,
+            child: SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2, color: accent),
+            ),
+          );
+        }
+        if (snapshot.hasError || !snapshot.hasData) {
+          return _ThumbFrame(
+            palette: palette,
+            child: Icon(
+              Icons.broken_image_outlined,
+              size: 20,
+              color: palette.danger,
+            ),
+          );
+        }
+        final bytes = snapshot.data!;
+        return GestureDetector(
+          onTap: () => onOpen(bytes),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: SizedBox(
+              width: 56,
+              height: 44,
+              child: Image.memory(
+                bytes,
+                fit: BoxFit.cover,
+                gaplessPlayback: true,
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _ThumbFrame extends StatelessWidget {
+  const _ThumbFrame({required this.palette, required this.child});
+
+  final OrgPalette palette;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 56,
+      height: 44,
+      decoration: BoxDecoration(
+        color: palette.surfaceHigh,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      alignment: Alignment.center,
+      child: child,
     );
   }
 }
