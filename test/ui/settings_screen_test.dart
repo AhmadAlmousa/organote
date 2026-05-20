@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:organote/domain/models/models.dart';
 import 'package:organote/domain/repositories/repositories.dart';
+import 'package:organote/services/logging/error_log_service.dart';
 import 'package:organote/services/storage/file_store.dart';
 import 'package:organote/ui/screens/settings/settings_screen.dart';
 import 'package:organote/ui/state/app_providers.dart';
@@ -50,6 +51,7 @@ void main() {
     expect(find.text('Customization'), findsOneWidget);
     expect(find.text('Data'), findsOneWidget);
     expect(find.text('Compliance'), findsOneWidget);
+    expect(find.text('Diagnostics'), findsOneWidget);
     expect(find.text('Danger Zone'), findsOneWidget);
     expect(find.text('Open trash'), findsOneWidget);
     expect(find.text('Backup'), findsOneWidget);
@@ -100,6 +102,12 @@ void main() {
     await tester.tap(find.text('Sync now'));
     await tester.pump();
     expect(syncRepo.syncCalls, 1);
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('settings.errorLog.switch')),
+    );
+    await tester.pump();
+    expect(prefs.getBool(ErrorLogService.enabledPreferenceKey), isTrue);
   });
 
   testWidgets('SettingsScreen opens trash and restores an entry', (
@@ -314,6 +322,9 @@ class _SettingsHarness extends StatelessWidget {
         libraryRepositoryProvider.overrideWithValue(_FakeLibraryRepo(snapshot)),
         syncRepositoryProvider.overrideWithValue(syncRepository),
         complianceRepositoryProvider.overrideWithValue(complianceRepository),
+        errorLogServiceProvider.overrideWithValue(
+          ErrorLogService(fileStore: fileStore, preferences: prefs),
+        ),
         if (noteRepository != null)
           noteRepositoryProvider.overrideWithValue(noteRepository!),
       ],
@@ -448,6 +459,7 @@ class _FakeFileStore implements FileStore {
   _FakeFileStore({required this.status});
 
   final StorageStatus status;
+  final Map<String, String> textFiles = <String, String>{};
   int chooseCalls = 0;
 
   @override
@@ -462,7 +474,9 @@ class _FakeFileStore implements FileStore {
   Future<void> delete(String relativePath, {bool recursive = false}) async {}
 
   @override
-  Future<bool> exists(String relativePath) async => false;
+  Future<bool> exists(String relativePath) async {
+    return textFiles.containsKey(relativePath);
+  }
 
   @override
   Future<StorageStatus> getStatus() async => status;
@@ -488,11 +502,14 @@ class _FakeFileStore implements FileStore {
   Future<List<int>> readBytes(String relativePath) async => const <int>[];
 
   @override
-  Future<String> readText(String relativePath) async => '';
+  Future<String> readText(String relativePath) async =>
+      textFiles[relativePath]!;
 
   @override
   Future<void> writeBytes(String relativePath, List<int> bytes) async {}
 
   @override
-  Future<void> writeText(String relativePath, String contents) async {}
+  Future<void> writeText(String relativePath, String contents) async {
+    textFiles[relativePath] = contents;
+  }
 }

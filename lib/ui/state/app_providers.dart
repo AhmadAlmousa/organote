@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../di/service_locator.dart';
 import '../../domain/repositories/repositories.dart';
+import '../../services/logging/error_log_service.dart';
 import '../../services/storage/file_store.dart';
 
 final sharedPreferencesProvider = Provider<SharedPreferences>((ref) {
@@ -12,6 +13,13 @@ final sharedPreferencesProvider = Provider<SharedPreferences>((ref) {
 });
 
 final fileStoreProvider = Provider<FileStore>((ref) => getIt<FileStore>());
+
+final errorLogServiceProvider = Provider<ErrorLogService>((ref) {
+  return ErrorLogService(
+    fileStore: ref.watch(fileStoreProvider),
+    preferences: ref.watch(sharedPreferencesProvider),
+  );
+});
 
 final libraryRepositoryProvider = Provider<LibraryRepository>(
   (ref) => getIt<LibraryRepository>(),

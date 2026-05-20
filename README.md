@@ -78,6 +78,15 @@ Install dependencies:
 /home/ahmad/flutter/bin/flutter pub get
 ```
 
+Create a local environment file:
+
+```sh
+cp .env.example .env
+```
+
+Then edit `.env` with your Google OAuth client IDs if you plan to use Drive
+sync. The file is ignored by Git.
+
 Run on Android:
 
 ```sh
@@ -145,30 +154,39 @@ https://www.googleapis.com/auth/drive.file
 
 6. Create an Android OAuth client for the app package name.
 7. Create a Web application OAuth client in the same project.
-8. Run or build the app with the web OAuth client ID:
+8. Add the web OAuth client ID to `.env`:
 
-```sh
-/home/ahmad/flutter/bin/flutter run \
-  --dart-define=GOOGLE_SIGN_IN_CLIENT_ID=<WEB_CLIENT_ID>
+```env
+GOOGLE_SIGN_IN_CLIENT_ID=<WEB_CLIENT_ID>
+GOOGLE_SIGN_IN_SERVER_CLIENT_ID=
 ```
 
-For release builds, pass the same define:
+After `.env` is configured, plain run and build commands will read it:
 
 ```sh
-/home/ahmad/flutter/bin/flutter build apk \
-  --dart-define=GOOGLE_SIGN_IN_CLIENT_ID=<WEB_CLIENT_ID>
+/home/ahmad/flutter/bin/flutter run
+/home/ahmad/flutter/bin/flutter build apk
 ```
 
-If you use a separate server client ID, pass it explicitly:
+If you use a separate server client ID, set it too:
 
-```sh
-/home/ahmad/flutter/bin/flutter run \
-  --dart-define=GOOGLE_SIGN_IN_CLIENT_ID=<WEB_CLIENT_ID> \
-  --dart-define=GOOGLE_SIGN_IN_SERVER_CLIENT_ID=<SERVER_CLIENT_ID>
+```env
+GOOGLE_SIGN_IN_CLIENT_ID=<WEB_CLIENT_ID>
+GOOGLE_SIGN_IN_SERVER_CLIENT_ID=<SERVER_CLIENT_ID>
 ```
 
-OAuth client IDs are not private keys, but do not commit private keystores,
+The `.env` file is bundled into app builds. OAuth client IDs are not private
+keys, but do not commit real project-specific IDs, private keystores,
 service-account files, signing passwords, or other secrets.
+
+This Android project does not currently include `google-services.json`, so the
+web OAuth client ID must be available to the app as `GOOGLE_SIGN_IN_CLIENT_ID`.
+The Android OAuth client in Google Cloud must also match the package name
+(`com.example.organote` by default) and the SHA-1 for the build you are running.
+
+Settings > Diagnostics > Save error log writes caught errors to
+`.organote/errors.log` inside the selected storage folder. Caught errors are
+also written to the runtime console, including the browser console on web.
 
 ## Android SHA-1 Fingerprints
 

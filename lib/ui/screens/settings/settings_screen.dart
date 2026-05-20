@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 import '../../../domain/models/models.dart';
 import '../../../services/storage/file_store.dart';
@@ -33,6 +34,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool _storageBusy = false;
   bool _syncBusy = false;
   bool _scanBusy = false;
+  bool _errorLogBusy = false;
 
   Future<void> _chooseStorageRoot() async {
     if (_storageBusy) return;
@@ -49,7 +51,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         message: 'Storage updated',
         icon: Icons.folder_rounded,
       );
-    } catch (_) {
+    } catch (error, stackTrace) {
+      await ref
+          .read(errorLogServiceProvider)
+          .recordError(error, stackTrace, source: 'settings.chooseStorageRoot');
       if (!mounted) return;
       showOrgToast(
         context,
@@ -73,7 +78,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         message: 'Drive connected',
         icon: Icons.cloud_done_rounded,
       );
-    } catch (error) {
+    } catch (error, stackTrace) {
+      await ref
+          .read(errorLogServiceProvider)
+          .recordError(error, stackTrace, source: 'settings.connectDrive');
       if (!mounted) return;
       showOrgToast(
         context,
@@ -93,7 +101,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       await ref.read(syncRepositoryProvider).syncNow();
       if (!mounted) return;
       showOrgToast(context, message: 'Sync complete', icon: Icons.sync_rounded);
-    } catch (_) {
+    } catch (error, stackTrace) {
+      await ref
+          .read(errorLogServiceProvider)
+          .recordError(error, stackTrace, source: 'settings.syncNow');
       if (!mounted) return;
       showOrgToast(
         context,
@@ -117,7 +128,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         message: 'Compliance scanned',
         icon: Icons.fact_check_rounded,
       );
-    } catch (_) {
+    } catch (error, stackTrace) {
+      await ref
+          .read(errorLogServiceProvider)
+          .recordError(error, stackTrace, source: 'settings.scanCompliance');
       if (!mounted) return;
       showOrgToast(
         context,
@@ -127,6 +141,33 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       );
     } finally {
       if (mounted) setState(() => _scanBusy = false);
+    }
+  }
+
+  Future<void> _setErrorLogging(bool value) async {
+    if (_errorLogBusy) return;
+    setState(() => _errorLogBusy = true);
+    try {
+      await ref.read(errorLogServiceProvider).setEnabled(value);
+      if (!mounted) return;
+      showOrgToast(
+        context,
+        message: value ? 'Error log enabled' : 'Error log disabled',
+        icon: value ? Icons.receipt_long_rounded : Icons.receipt_rounded,
+      );
+    } catch (error, stackTrace) {
+      await ref
+          .read(errorLogServiceProvider)
+          .recordError(error, stackTrace, source: 'settings.errorLogToggle');
+      if (!mounted) return;
+      showOrgToast(
+        context,
+        message: 'Error log setting failed',
+        icon: Icons.error_outline_rounded,
+        background: OrgPaletteScope.of(context).danger,
+      );
+    } finally {
+      if (mounted) setState(() => _errorLogBusy = false);
     }
   }
 
@@ -161,6 +202,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final snapshot = ref.watch(librarySnapshotProvider);
     final theme = ref.watch(themeProvider);
     final storage = ref.watch(_settingsStorageStatusProvider);
+    final errorLogService = ref.watch(errorLogServiceProvider);
+    final errorLogEnabled = errorLogService.isEnabled;
     final syncStream = ref.watch(_settingsSyncStatusProvider);
     final syncStatus = syncStream.maybeWhen(
       data: (status) => status,
@@ -245,6 +288,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                           onReview: _openComplianceReview,
                                         ),
                                         const SizedBox(height: 14),
+                                        _DiagnosticsSection(
+                                          enabled: errorLogEnabled,
+                                          busy: _errorLogBusy,
+                                          onChanged: _setErrorLogging,
+                                        ),
+                                        const SizedBox(height: 14),
                                         _DangerZoneSection(
                                           onOpen: _openDangerZone,
                                         ),
@@ -279,6 +328,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                 onReview: _openComplianceReview,
                               ),
                               const SizedBox(height: 14),
+                              _DiagnosticsSection(
+                                enabled: errorLogEnabled,
+                                busy: _errorLogBusy,
+                                onChanged: _setErrorLogging,
+                              ),
+                              const SizedBox(height: 14),
                               _DangerZoneSection(onOpen: _openDangerZone),
                             ],
                           ],
@@ -297,7 +352,31 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 }
 
 String _compactError(Object error) {
+  if (error is GoogleSignInException) {
+    return _compactGoogleSignInError(error);
+  }
   final message = error.toString();
+  if (message.length <= 96) {
+    return message;
+  }
+  return '${message.substring(0, 93)}...';
+}
+
+String _compactGoogleSignInError(GoogleSignInException error) {
+  return switch (error.code) {
+    GoogleSignInExceptionCode.clientConfigurationError ||
+    GoogleSignInExceptionCode.providerConfigurationError =>
+      'Google Sign-In configuration failed. Check web client ID, package name, and SHA-1.',
+    GoogleSignInExceptionCode.canceled =>
+      'Google sign-in was canceled. If this followed account selection, check Android OAuth setup.',
+    GoogleSignInExceptionCode.uiUnavailable =>
+      'Google sign-in UI is unavailable on this device.',
+    GoogleSignInExceptionCode.interrupted => 'Google sign-in was interrupted.',
+    _ => _compactText(error.description ?? error.toString()),
+  };
+}
+
+String _compactText(String message) {
   if (message.length <= 96) {
     return message;
   }
@@ -812,6 +891,50 @@ class _ComplianceSection extends StatelessWidget {
   }
 }
 
+class _DiagnosticsSection extends StatelessWidget {
+  const _DiagnosticsSection({
+    required this.enabled,
+    required this.busy,
+    required this.onChanged,
+  });
+
+  final bool enabled;
+  final bool busy;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = OrgPaletteScope.of(context);
+    return _SettingsSection(
+      icon: Icons.receipt_long_rounded,
+      title: 'Diagnostics',
+      subtitle: enabled ? 'Error log on' : 'Error log off',
+      trailing: _StatusPill(
+        label: enabled ? 'On' : 'Off',
+        color: enabled ? palette.success : palette.textTertiary,
+      ),
+      child: Column(
+        children: [
+          _SwitchRow(
+            icon: Icons.bug_report_rounded,
+            label: 'Save error log',
+            value: enabled,
+            enabled: !busy,
+            onChanged: onChanged,
+            switchKey: const ValueKey<String>('settings.errorLog.switch'),
+          ),
+          const SizedBox(height: 8),
+          const _InfoRow(
+            icon: Icons.description_rounded,
+            label: 'File',
+            value: '.organote/errors.log',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _DangerZoneSection extends StatelessWidget {
   const _DangerZoneSection({required this.onOpen});
 
@@ -1172,6 +1295,7 @@ class _SwitchRow extends StatelessWidget {
     required this.value,
     required this.enabled,
     required this.onChanged,
+    this.switchKey,
   });
 
   final IconData icon;
@@ -1179,6 +1303,7 @@ class _SwitchRow extends StatelessWidget {
   final bool value;
   final bool enabled;
   final ValueChanged<bool> onChanged;
+  final Key? switchKey;
 
   @override
   Widget build(BuildContext context) {
@@ -1205,6 +1330,7 @@ class _SwitchRow extends StatelessWidget {
             ),
           ),
           Switch.adaptive(
+            key: switchKey,
             value: value,
             onChanged: enabled ? onChanged : null,
             activeThumbColor: palette.accent,

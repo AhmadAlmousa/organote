@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:extension_google_sign_in_as_googleapis_auth/extension_google_sign_in_as_googleapis_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:googleapis/drive/v3.dart' as drive;
 import 'package:googleapis_auth/googleapis_auth.dart' as google_auth;
@@ -27,6 +28,31 @@ String? _blankToNull(String? value) {
   return normalized == null || normalized.isEmpty ? null : normalized;
 }
 
+String? _configuredValue({
+  required String key,
+  required String defineValue,
+  String? override,
+}) {
+  final value =
+      _blankToNull(override) ??
+      _blankToNull(defineValue) ??
+      _blankToNull(dotenv.isInitialized ? dotenv.maybeGet(key) : null);
+  if (_isPlaceholderClientId(value)) {
+    return null;
+  }
+  return value;
+}
+
+bool _isPlaceholderClientId(String? value) {
+  final lower = value?.toLowerCase();
+  if (lower == null) {
+    return false;
+  }
+  return lower.contains('replace-me') ||
+      lower.contains('<') ||
+      lower.contains('your_');
+}
+
 class GoogleDriveSyncRepository implements SyncRepository {
   GoogleDriveSyncRepository({
     required FileStore fileStore,
@@ -41,9 +67,15 @@ class GoogleDriveSyncRepository implements SyncRepository {
        _ledgerStore = ledgerStore ?? SyncLedgerStore(fileStore),
        _remoteProvider = remoteFileProvider,
        _googleSignIn = googleSignIn ?? GoogleSignIn.instance,
-       _clientId = _blankToNull(clientId ?? _googleSignInClientId),
-       _serverClientId = _blankToNull(
-         serverClientId ?? _googleSignInServerClientId,
+       _clientId = _configuredValue(
+         key: 'GOOGLE_SIGN_IN_CLIENT_ID',
+         defineValue: _googleSignInClientId,
+         override: clientId,
+       ),
+       _serverClientId = _configuredValue(
+         key: 'GOOGLE_SIGN_IN_SERVER_CLIENT_ID',
+         defineValue: _googleSignInServerClientId,
+         override: serverClientId,
        ) {
     _statusController.add(const SyncStatus());
   }
@@ -192,9 +224,13 @@ class GoogleDriveSyncRepository implements SyncRepository {
     if (_initialized) {
       return;
     }
+    final clientId = kIsWeb || defaultTargetPlatform != TargetPlatform.android
+        ? _clientId
+        : null;
+    final serverClientId = kIsWeb ? null : _serverClientId ?? _clientId;
     await _googleSignIn.initialize(
-      clientId: _clientId,
-      serverClientId: kIsWeb ? null : _serverClientId ?? _clientId,
+      clientId: clientId,
+      serverClientId: serverClientId,
     );
     _initialized = true;
   }
@@ -317,6 +353,9 @@ class GoogleDriveSyncRepository implements SyncRepository {
 }
 
 String _syncErrorMessage(Object error) {
+  if (error is GoogleSignInException) {
+    return _googleSignInErrorMessage(error);
+  }
   final raw = error.toString();
   if (raw.contains('serverClientId') || raw.contains('clientConfiguration')) {
     return 'Google Sign-In is missing or rejecting the OAuth client ID.';
@@ -325,4 +364,23 @@ String _syncErrorMessage(Object error) {
     return raw;
   }
   return '${raw.substring(0, 137)}...';
+}
+
+String _googleSignInErrorMessage(GoogleSignInException error) {
+  final description = error.description ?? '';
+  return switch (error.code) {
+    GoogleSignInExceptionCode.clientConfigurationError
+        when description.contains('serverClientId') =>
+      'Google Sign-In needs the web OAuth client ID as Android serverClientId.',
+    GoogleSignInExceptionCode.clientConfigurationError =>
+      'Google Sign-In client configuration failed. Check client ID, package, and SHA-1.',
+    GoogleSignInExceptionCode.providerConfigurationError =>
+      'Google Sign-In provider setup failed. Check Google Play services and OAuth setup.',
+    GoogleSignInExceptionCode.canceled =>
+      'Google sign-in was canceled. If this happened after account selection, check OAuth setup.',
+    GoogleSignInExceptionCode.uiUnavailable =>
+      'Google sign-in UI is unavailable on this device.',
+    GoogleSignInExceptionCode.interrupted => 'Google sign-in was interrupted.',
+    _ => description.isEmpty ? error.toString() : description,
+  };
 }
