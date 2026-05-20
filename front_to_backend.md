@@ -6,7 +6,7 @@ contracts change.
 
 ## Status
 
-Phases 1 through 9 are shipped on the frontend. `flutter analyze` is clean and
+Phases 1 through 10 are shipped on the frontend. `flutter analyze` is clean and
 the current unit/widget suite passes.
 
 - Phase 1 (foundation): `lib/ui/theme/**` (OkLCH color tokens, motion curves,
@@ -61,6 +61,14 @@ the current unit/widget suite passes.
   archive counts before commit. Danger Zone requires typed `WIPE` confirmation
   before deleting Organote storage directories and reloading. Coverage extended
   in `test/ui/settings_screen_test.dart`.
+- Phase 10 (Raw source editor): `lib/ui/screens/note_editor/raw_source_editor.dart`
+  is live from Note Viewer → More → Raw source. It loads through
+  `NoteRepository.getRawSource`, provides editor / preview / split modes with
+  `gpt_markdown`, autosaves after 2 seconds of typing through `saveRawSource`,
+  supports manual save via the toolbar / Cmd+S / Ctrl+S, and flushes dirty edits
+  before closing. The viewer's "Edit template" menu item now opens the shipped
+  `TemplateBuilderScreen` for the attached template. Coverage added in
+  `test/ui/note_viewer_screen_test.dart`.
 
 ### Unilateral decisions taken (please review)
 
@@ -87,7 +95,7 @@ Items #1–#10 from the previous revision have been fully addressed by backend.
 Acknowledgements:
 
 1. Packages — confirmed present. ✓
-2. `getRawSource(id)` — added. Frontend will use it in Phase 10. ✓
+2. `getRawSource(id)` — added and now in use by the Phase 10 raw source editor. ✓
 3. `AssetRepository.readAssetBytes(relativePath)` — added. Frontend will use
    it for image-field thumbnails in Phase 6. ✓
 4. `setPinned(id, v)` / `setFavorite(id, v)` — added and **now in use** in
@@ -107,7 +115,7 @@ Acknowledgements:
 
 ## No pending requests at this time
 
-Frontend will post new requests here as they arise during Phases 10–12.
+Frontend will post new requests here as they arise during Phases 11–12.
 
 Known frontend-only caveat: Compliance issue ignore is session-local because
 `ComplianceRepository` has no persistent ignore/acknowledge command. No backend

@@ -22,6 +22,8 @@ import '../../widgets/org_icon_button.dart';
 import '../../widgets/org_toast.dart';
 import '../../widgets/record_card.dart';
 import '../note_editor/note_editor_screen.dart';
+import '../note_editor/raw_source_editor.dart';
+import '../template_builder/template_builder_screen.dart';
 
 class NoteViewerScreen extends ConsumerWidget {
   const NoteViewerScreen({super.key, required this.noteId});
@@ -262,6 +264,30 @@ class _ViewerBodyState extends ConsumerState<_ViewerBody> {
     Navigator.of(context).push(
       OrgOverlayRoute<void>(
         builder: (_) => NoteEditorScreen(noteId: widget.note.id),
+      ),
+    );
+  }
+
+  void _openRawSource(BuildContext context) {
+    Navigator.of(context).push(
+      OrgOverlayRoute<void>(
+        builder: (_) => RawSourceEditorScreen(
+          noteId: widget.note.id,
+          noteTitle: widget.note.title,
+        ),
+      ),
+    );
+  }
+
+  void _openTemplateBuilder(BuildContext context) {
+    final template = widget.template;
+    if (template == null) {
+      _toastSoon(context, 'This note has no template');
+      return;
+    }
+    Navigator.of(context).push(
+      OrgOverlayRoute<void>(
+        builder: (_) => TemplateBuilderScreen(templateId: template.id),
       ),
     );
   }
@@ -516,9 +542,9 @@ class _ViewerBodyState extends ConsumerState<_ViewerBody> {
     if (!context.mounted || selected == null) return;
     switch (selected) {
       case _ViewerMenu.editTemplate:
-        _toastSoon(context, 'Template builder lands in Phase 5');
+        _openTemplateBuilder(context);
       case _ViewerMenu.rawSource:
-        _toastSoon(context, 'Raw source editor lands in Phase 10');
+        _openRawSource(context);
       case _ViewerMenu.delete:
         _delete(context);
     }
