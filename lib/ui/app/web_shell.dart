@@ -196,6 +196,8 @@ class _WebShellState extends ConsumerState<WebShell> {
                               activeTemplateId,
                             ),
                             settings: widget.settings,
+                            onDismissDraft: _dismissDraft,
+                            onTemplateSaved: _finishTemplateDraft,
                           ),
                         ),
                       ),
@@ -306,6 +308,15 @@ class _WebShellState extends ConsumerState<WebShell> {
     setState(() => _draftKind = _DraftKind.none);
   }
 
+  void _finishTemplateDraft(Template template) {
+    FocusManager.instance.primaryFocus?.unfocus();
+    setState(() {
+      _tab = OrgTabId.templates;
+      _selectedTemplateId = template.id;
+      _draftKind = _DraftKind.none;
+    });
+  }
+
   List<Note> _visibleNotes(LibrarySnapshot snapshot) {
     final search = NoteSearchState(query: _noteQuery, category: _categoryPath);
     final notes = search.apply(snapshot.notes).toList();
@@ -401,6 +412,8 @@ class _ContentPane extends StatelessWidget {
     required this.activeTemplate,
     required this.templateNotes,
     required this.settings,
+    required this.onDismissDraft,
+    required this.onTemplateSaved,
   });
 
   final OrgTabId tab;
@@ -411,6 +424,8 @@ class _ContentPane extends StatelessWidget {
   final Template? activeTemplate;
   final List<Note> templateNotes;
   final Widget settings;
+  final VoidCallback onDismissDraft;
+  final ValueChanged<Template> onTemplateSaved;
 
   @override
   Widget build(BuildContext context) {
@@ -454,7 +469,10 @@ class _ContentPane extends StatelessWidget {
       return NoteEditorScreen(templateId: draftTemplateId);
     }
     if (draftKind == _DraftKind.template) {
-      return const TemplateBuilderScreen();
+      return TemplateBuilderScreen(
+        onClose: onDismissDraft,
+        onSaved: onTemplateSaved,
+      );
     }
     return switch (tab) {
       OrgTabId.home =>

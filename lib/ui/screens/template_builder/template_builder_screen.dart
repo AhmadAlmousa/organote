@@ -124,9 +124,16 @@ class _FieldDraft {
 // ---------------------------------------------------------------------------
 
 class TemplateBuilderScreen extends ConsumerStatefulWidget {
-  const TemplateBuilderScreen({super.key, this.templateId});
+  const TemplateBuilderScreen({
+    super.key,
+    this.templateId,
+    this.onClose,
+    this.onSaved,
+  });
 
   final String? templateId;
+  final VoidCallback? onClose;
+  final ValueChanged<Template>? onSaved;
 
   @override
   ConsumerState<TemplateBuilderScreen> createState() =>
@@ -175,7 +182,7 @@ class _TemplateBuilderScreenState extends ConsumerState<TemplateBuilderScreen> {
     setState(() => _saving = true);
     try {
       final repo = ref.read(templateRepositoryProvider);
-      await repo.saveTemplate(
+      final saved = await repo.saveTemplate(
         TemplateInput(
           id: widget.templateId,
           name: name,
@@ -185,7 +192,9 @@ class _TemplateBuilderScreenState extends ConsumerState<TemplateBuilderScreen> {
           fields: _fields.map((f) => f.toField()).toList(),
         ),
       );
-      if (mounted) Navigator.of(context).maybePop();
+      if (!mounted) return;
+      widget.onSaved?.call(saved);
+      _close();
     } catch (e) {
       if (mounted) {
         setState(() => _saving = false);
@@ -195,6 +204,21 @@ class _TemplateBuilderScreenState extends ConsumerState<TemplateBuilderScreen> {
           icon: Icons.error_outline_rounded,
         );
       }
+    }
+  }
+
+  void _close() {
+    if (!mounted) return;
+    final onClose = widget.onClose;
+    if (onClose != null) {
+      onClose();
+      return;
+    }
+    final navigator = Navigator.of(context);
+    if (navigator.canPop()) {
+      navigator.pop();
+    } else if (_saving) {
+      setState(() => _saving = false);
     }
   }
 
@@ -251,10 +275,10 @@ class _TemplateBuilderScreenState extends ConsumerState<TemplateBuilderScreen> {
     final accentSoft = softForHue(categoryHue, 0.18);
 
     return PopScope<Object?>(
-      canPop: false,
+      canPop: widget.onClose == null,
       onPopInvokedWithResult: (didPop, _) async {
         if (didPop) return;
-        Navigator.of(context).maybePop();
+        _close();
       },
       child: Scaffold(
         backgroundColor: palette.bg,
@@ -268,7 +292,7 @@ class _TemplateBuilderScreenState extends ConsumerState<TemplateBuilderScreen> {
                   saving: _saving,
                   accent: accent,
                   isEdit: widget.templateId != null,
-                  onBack: () => Navigator.of(context).maybePop(),
+                  onBack: _close,
                   onSave: _save,
                 ),
               ),
