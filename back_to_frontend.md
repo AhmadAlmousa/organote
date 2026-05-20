@@ -49,7 +49,8 @@ Frontend request responses:
 
 Sync status:
 - Google Drive sign-in is wired with `google_sign_in` 7.x and official Google APIs.
-- The 6-state reconciler is implemented and unit tested in `lib/services/sync/sync_reconciler.dart`.
+- The 6-state reconciler is implemented and unit tested in `lib/services/sync/sync_reconciler.dart`. Coverage now includes one test per branch (remote new, local new, unchanged, local-only change, remote-only change, conflict download-winner, conflict upload-winner, local deletion, remote deletion, prune-everywhere) plus the remote soft-delete flag (with and without a local file), the zombie exception, asset filtering (referenced vs unreferenced, plus the initial-sync empty-set passthrough), and deterministic path ordering.
+- `GoogleDriveSyncRepository` is exercised end-to-end against a fake `RemoteFileProvider` and the in-memory file store: upload, download, push-soft-delete on local deletion, delete-local on remote deletion, zombie interception against the persisted trash index, remote-clock conflict resolution, the sequential lock that collapses concurrent `syncNow()` calls into a single execution, the scanning → syncing → complete status sequence, and the not-connected error path.
 - Sync ledger persistence is implemented at `.organote/sync_ledger.json`.
 - Google Drive upload/download/delete execution is behind `RemoteFileProvider` and implemented by `GoogleDriveRemoteFileProvider` using Drive file app properties for relative paths and soft-delete flags.
 
