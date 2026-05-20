@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../domain/models/models.dart';
+import '../../app/overlay_route.dart';
 import '../../state/app_providers.dart';
 import '../../state/library_provider.dart';
 import '../../state/search_controller.dart';
@@ -15,6 +16,7 @@ import '../../widgets/org_fab.dart';
 import '../../widgets/org_icon_button.dart';
 import '../../widgets/org_search_bar.dart';
 import '../../widgets/wordmark.dart';
+import '../note_viewer/note_viewer_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -43,10 +45,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   void _openNote(Note note) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Note "${note.title}" opens in Phase 3 (viewer).'),
-      ),
+    Navigator.of(context).push(
+      OrgOverlayRoute<void>(builder: (_) => NoteViewerScreen(noteId: note.id)),
     );
   }
 

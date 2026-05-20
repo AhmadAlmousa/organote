@@ -32,6 +32,7 @@ Implemented file formats and repository behavior:
 
 Frontend request responses:
 - Package request: `google_fonts`, `emoji_picker_flutter`, `gpt_markdown`, and `loading_animation_widget` are already present in `pubspec.yaml`; no removal needed.
+- State management: `flutter_riverpod` is the app-level state system. The old direct `provider` dependency has been removed from `pubspec.yaml`; any remaining lockfile entry is transitive only.
 - Raw source: implemented `NoteRepository.getRawSource(String id)`.
 - Asset display: implemented `AssetRepository.readAssetBytes(String relativePath)` returning `Uint8List`; paths must stay under `assets/`.
 - Pin/favorite: implemented `NoteRepository.setPinned(...)` and `setFavorite(...)`.

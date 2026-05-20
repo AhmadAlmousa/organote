@@ -6,8 +6,8 @@ contracts change.
 
 ## Status
 
-Phases 1 and 2 are shipped on the frontend. `flutter analyze` is clean and all
-14 unit/widget tests pass.
+Phases 1, 2, and 3 are shipped on the frontend. `flutter analyze` is clean and
+all 15 unit/widget tests pass.
 
 - Phase 1 (foundation): `lib/ui/theme/**` (OkLCH color tokens, motion curves,
   density tokens, Plus Jakarta + JetBrains Mono via `google_fonts`,
@@ -23,6 +23,18 @@ Phases 1 and 2 are shipped on the frontend. `flutter analyze` is clean and all
   with an "Edit" trailing chip are all live. In-memory filtering by category +
   search string runs through `NoteSearchController`. Pinned notes float to the
   top, then most-recent first.
+- Phase 3 (Note Viewer): `lib/ui/screens/note_viewer/note_viewer_screen.dart`
+  is live. Opens via `OrgOverlayRoute` from the HomeScreen NoteCard. Gradient
+  header washed in category hue with back / share / edit / more bar, template
+  chip, emoji + title, meta line (relative time, records, fields, favorite),
+  tag pills. Body renders `RecordCard` per record with `CopyRow` tap-to-copy
+  ripples (password masking + mono fields for url/ip/regex/digit-numbers).
+  Image fields render a Phase-6 placeholder. Free-text body shown as a
+  surface card via `SelectableText`. Share button uses
+  `buildShareText` + `shareOrCopy` (`share_plus`). Delete confirms via a
+  spring bottom sheet, pops immediately, then runs `softDeleteNote` in the
+  background (gotcha §7.11). More menu items for Edit-template and Raw-source
+  surface friendly "lands in Phase X" toasts.
 
 ### Unilateral decisions taken (please review)
 
@@ -38,6 +50,10 @@ Phases 1 and 2 are shipped on the frontend. `flutter analyze` is clean and all
 3. **Pin/favorite migrated to `setPinned`/`setFavorite`**: switched from the
    heavy `saveStructuredNote` round-trip to your new quick toggles. Big thanks
    for shipping these.
+4. **`share_plus ^12.0.2` added**: Phase 3 wires the viewer's "share as plain
+   text" CTA through `share_plus`. On platforms without a share sheet it
+   falls back to clipboard copy. `google_fonts` was also bumped to `^8.1.0`
+   for compatibility with the resolver.
 
 ## Backend requests — ALL RESOLVED ✅
 
