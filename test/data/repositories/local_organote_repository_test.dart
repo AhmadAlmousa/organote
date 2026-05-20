@@ -144,5 +144,239 @@ void main() {
 
       expect(restored.notes.single.title, 'Backup Me');
     });
+
+    test('appends collision suffixes for duplicate note titles', () async {
+      final first = await repository.saveStructuredNote(
+        const NoteInput(
+          title: 'Duplicate Title',
+          records: [NoteRecord(label: 'Record', values: {})],
+        ),
+      );
+      final second = await repository.saveStructuredNote(
+        const NoteInput(
+          title: 'Duplicate Title',
+          records: [NoteRecord(label: 'Record', values: {})],
+        ),
+      );
+      final third = await repository.saveStructuredNote(
+        const NoteInput(
+          title: 'Duplicate Title',
+          records: [NoteRecord(label: 'Record', values: {})],
+        ),
+      );
+
+      expect(first.sourcePath, 'notes/duplicate-title.md');
+      expect(second.sourcePath, 'notes/duplicate-title-2.md');
+      expect(third.sourcePath, 'notes/duplicate-title-3.md');
+      expect(first.id, isNot(equals(second.id)));
+    });
+
+    test('appends collision suffixes for duplicate template names', () async {
+      final first = await repository.saveTemplate(
+        const TemplateInput(
+          id: 'server-a',
+          name: 'Server',
+          fields: [
+            TemplateField(
+              id: 'name',
+              label: 'Name',
+              type: TemplateFieldType.text,
+            ),
+          ],
+        ),
+      );
+      final second = await repository.saveTemplate(
+        const TemplateInput(
+          id: 'server-b',
+          name: 'Server',
+          fields: [
+            TemplateField(
+              id: 'name',
+              label: 'Name',
+              type: TemplateFieldType.text,
+            ),
+          ],
+        ),
+      );
+
+      expect(first.sourcePath, 'templates/server.md');
+      expect(second.sourcePath, 'templates/server-2.md');
+    });
+
+    test(
+      'keeps the existing note path when re-saving with the same id',
+      () async {
+        final original = await repository.saveStructuredNote(
+          const NoteInput(
+            id: 'note-1',
+            title: 'Edit Target',
+            records: [NoteRecord(label: 'Record', values: {})],
+          ),
+        );
+        final resaved = await repository.saveStructuredNote(
+          NoteInput(
+            id: original.id,
+            title: 'Edit Target',
+            records: const [
+              NoteRecord(label: 'Record', values: {'field': 'value'}),
+            ],
+          ),
+        );
+
+        expect(resaved.sourcePath, original.sourcePath);
+      },
+    );
+
+    test(
+      'moves notes and color metadata when a category is renamed',
+      () async {
+        await repository.saveCategory(
+          const Category(
+            path: 'infra/lab',
+            name: 'lab',
+            parentPath: 'infra',
+            colorHex: '#abcdef',
+          ),
+        );
+        final note = await repository.saveStructuredNote(
+          const NoteInput(
+            title: 'Inside Lab',
+            categoryPath: 'infra/lab',
+            records: [NoteRecord(label: 'Record', values: {})],
+          ),
+        );
+
+        await repository.moveCategory('infra/lab', 'platform/lab');
+        final snapshot = await repository.reload();
+
+        expect(await store.exists(note.sourcePath!), isFalse);
+        expect(
+          await store.exists('notes/platform/lab/inside-lab.md'),
+          isTrue,
+        );
+        final moved = snapshot.categories.firstWhere(
+          (category) => category.path == 'platform/lab',
+        );
+        expect(moved.colorHex, '#abcdef');
+      },
+    );
+
+    test('soft deletes a category into trash and clears its color', () async {
+      await repository.saveCategory(
+        const Category(
+          path: 'infra',
+          name: 'infra',
+          colorHex: '#112233',
+        ),
+      );
+      await repository.saveStructuredNote(
+        const NoteInput(
+          title: 'In Category',
+          categoryPath: 'infra',
+          records: [NoteRecord(label: 'Record', values: {})],
+        ),
+      );
+
+      await repository.deleteCategory('infra');
+      final snapshot = await repository.reload();
+
+      expect(snapshot.notes, isEmpty);
+      expect(
+        snapshot.categories.where((category) => category.path == 'infra'),
+        isEmpty,
+      );
+      expect(snapshot.trash.single.type, TrashEntryType.category);
+      expect(snapshot.trash.single.originalPath, 'notes/infra');
+    });
+
+    test('restores a soft-deleted note back to its original path', () async {
+      final note = await repository.saveStructuredNote(
+        const NoteInput(
+          title: 'Restore Me',
+          records: [NoteRecord(label: 'Record', values: {})],
+        ),
+      );
+      final originalPath = note.sourcePath!;
+
+      await repository.softDeleteNote(note.id);
+      final afterDelete = await repository.reload();
+      expect(afterDelete.notes, isEmpty);
+      expect(await store.exists(originalPath), isFalse);
+
+      final trashEntry = afterDelete.trash.single;
+      await repository.restoreFromTrash(trashEntry.id);
+      final afterRestore = await repository.reload();
+
+      expect(await store.exists(originalPath), isTrue);
+      expect(afterRestore.notes.single.id, note.id);
+      expect(afterRestore.trash, isEmpty);
+    });
+
+    test('purges a trash entry and removes it from the trash index', () async {
+      final note = await repository.saveStructuredNote(
+        const NoteInput(
+          title: 'Purge Me',
+          records: [NoteRecord(label: 'Record', values: {})],
+        ),
+      );
+
+      await repository.softDeleteNote(note.id);
+      final afterDelete = await repository.reload();
+      final trashEntry = afterDelete.trash.single;
+      expect(await store.exists(trashEntry.trashPath), isTrue);
+
+      await repository.purgeTrashEntry(trashEntry.id);
+      final afterPurge = await repository.reload();
+
+      expect(await store.exists(trashEntry.trashPath), isFalse);
+      expect(afterPurge.trash, isEmpty);
+      final trashJson =
+          jsonDecode(await store.readText('.organote/trash.json'))
+              as List<dynamic>;
+      expect(trashJson, isEmpty);
+    });
+
+    test(
+      'ignores unknown trash ids without throwing on restore or purge',
+      () async {
+        await repository.restoreFromTrash('does-not-exist');
+        await repository.purgeTrashEntry('does-not-exist');
+
+        final snapshot = await repository.reload();
+        expect(snapshot.trash, isEmpty);
+      },
+    );
+
+    test(
+      'parses malformed markdown files without crashing the snapshot',
+      () async {
+        await store.writeText(
+          'notes/broken.md',
+          'this file has no headings, no metadata, just words.\n',
+        );
+
+        final snapshot = await repository.reload();
+
+        expect(snapshot.notes.single.title, 'Untitled');
+        expect(snapshot.notes.single.id, 'broken');
+        expect(snapshot.notes.single.records, isEmpty);
+      },
+    );
+
+    test(
+      'reads a malformed note title as Untitled but keeps it editable',
+      () async {
+        await store.writeText('notes/keep.md', '## Stray Record\n');
+
+        final snapshot = await repository.reload();
+        final loaded = snapshot.notes.single;
+        expect(loaded.title, 'Untitled');
+        expect(loaded.records, hasLength(1));
+        expect(loaded.records.single.label, 'Stray Record');
+
+        final raw = await repository.getRawSource(loaded.id);
+        expect(raw, contains('Stray Record'));
+      },
+    );
   });
 }
