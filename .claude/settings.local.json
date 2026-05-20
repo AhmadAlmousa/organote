@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__dart__pub",
+      "mcp__dart__analyze_files",
+      "mcp__dart__run_tests",
+      "mcp__dart__dart_format",
+      "Bash(flutter analyze *)",
+      "Bash(flutter test *)",
+      "Bash(git add *)",
+      "Bash(git commit *)"
+    ]
+  }
+}

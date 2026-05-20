@@ -6,8 +6,8 @@ contracts change.
 
 ## Status
 
-Phases 1, 2, and 3 are shipped on the frontend. `flutter analyze` is clean and
-all 15 unit/widget tests pass.
+Phases 1, 2, and 3 are shipped on the frontend, plus the first live pass of the
+Templates tab. `flutter analyze` is clean and all 16 unit/widget tests pass.
 
 - Phase 1 (foundation): `lib/ui/theme/**` (OkLCH color tokens, motion curves,
   density tokens, Plus Jakarta + JetBrains Mono via `google_fonts`,
@@ -35,6 +35,15 @@ all 15 unit/widget tests pass.
   spring bottom sheet, pops immediately, then runs `softDeleteNote` in the
   background (gotcha §7.11). More menu items for Edit-template and Raw-source
   surface friendly "lands in Phase X" toasts.
+- Templates tab progress: `lib/ui/screens/templates/templates_screen.dart` now
+  renders from `LibrarySnapshot.templates` and `LibrarySnapshot.notes`. It
+  shows the stats banner (total / used / unused / total fields), used and unused
+  sections, and `lib/ui/widgets/template_card.dart` cards with field previews,
+  required counts, layout pills, and relative update time. Used templates expose
+  an associated-notes bottom sheet that can open `NoteViewerScreen`; unused
+  templates surface the create note CTA as a Phase-4 placeholder until the note
+  editor exists. Template create/edit actions remain Phase-5 placeholders until
+  the builder is shipped. Coverage added in `test/ui/templates_screen_test.dart`.
 
 ### Unilateral decisions taken (please review)
 
