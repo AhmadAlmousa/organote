@@ -16,6 +16,7 @@ import '../../widgets/org_fab.dart';
 import '../../widgets/org_icon_button.dart';
 import '../../widgets/org_search_bar.dart';
 import '../../widgets/wordmark.dart';
+import '../note_editor/note_editor_screen.dart';
 import '../note_viewer/note_viewer_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
@@ -51,9 +52,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   void _createNote() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('New-note editor lands in Phase 4.')),
-    );
+    Navigator.of(
+      context,
+    ).push(OrgOverlayRoute<void>(builder: (_) => const NoteEditorScreen()));
   }
 
   @override

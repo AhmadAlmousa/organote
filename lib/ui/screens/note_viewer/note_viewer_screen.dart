@@ -13,11 +13,13 @@ import '../../util/category_color.dart';
 import '../../util/relative_time.dart';
 import '../../util/share_intent.dart';
 import '../../util/share_text_builder.dart';
+import '../../app/overlay_route.dart';
 import '../../widgets/copy_row.dart';
 import '../../widgets/org_empty_state.dart';
 import '../../widgets/org_icon_button.dart';
 import '../../widgets/org_toast.dart';
 import '../../widgets/record_card.dart';
+import '../note_editor/note_editor_screen.dart';
 
 class NoteViewerScreen extends ConsumerWidget {
   const NoteViewerScreen({super.key, required this.noteId});
@@ -254,6 +256,14 @@ class _ViewerBodyState extends ConsumerState<_ViewerBody> {
     );
   }
 
+  void _openEditor(BuildContext context) {
+    Navigator.of(context).push(
+      OrgOverlayRoute<void>(
+        builder: (_) => NoteEditorScreen(noteId: widget.note.id),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final palette = OrgPaletteScope.of(context);
@@ -279,7 +289,7 @@ class _ViewerBodyState extends ConsumerState<_ViewerBody> {
               compact: compact,
               onBack: () => Navigator.of(context).maybePop(),
               onShare: () => _share(context),
-              onEdit: () => _toastSoon(context, 'Editor lands in Phase 4'),
+              onEdit: () => _openEditor(context),
               onMore: () => _showMoreMenu(context),
             ),
           ),

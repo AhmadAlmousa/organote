@@ -12,6 +12,7 @@ import '../../widgets/org_fab.dart';
 import '../../widgets/org_icon_button.dart';
 import '../../widgets/template_card.dart';
 import '../../widgets/wordmark.dart';
+import '../note_editor/note_editor_screen.dart';
 import '../note_viewer/note_viewer_screen.dart';
 
 class TemplatesScreen extends ConsumerWidget {
@@ -168,9 +169,9 @@ class TemplatesScreen extends ConsumerWidget {
   }
 
   void _showCreateNotePlaceholder(BuildContext context, Template template) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('New note from ${template.name} lands in Phase 4.'),
+    Navigator.of(context).push(
+      OrgOverlayRoute<void>(
+        builder: (_) => NoteEditorScreen(templateId: template.id),
       ),
     );
   }
