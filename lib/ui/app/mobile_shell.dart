@@ -1,11 +1,35 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../theme/color_tokens.dart';
 import '../theme/density.dart';
 import '../theme/motion.dart';
 import '../widgets/glass_panel.dart';
+import '../widgets/org_toast.dart';
 
 enum OrgTabId { home, templates, settings }
+
+/// Exposes the visible height of the floating bottom nav so screens can
+/// reserve safe bottom padding for FABs, lists, and other anchored content.
+class OrgMobileChrome extends InheritedWidget {
+  const OrgMobileChrome({
+    super.key,
+    required this.bottomInset,
+    required super.child,
+  });
+
+  final double bottomInset;
+
+  static double bottomInsetOf(BuildContext context) {
+    final scope = context
+        .dependOnInheritedWidgetOfExactType<OrgMobileChrome>();
+    return scope?.bottomInset ?? 0;
+  }
+
+  @override
+  bool updateShouldNotify(OrgMobileChrome oldWidget) =>
+      oldWidget.bottomInset != bottomInset;
+}
 
 class MobileShell extends StatefulWidget {
   const MobileShell({
@@ -24,50 +48,96 @@ class MobileShell extends StatefulWidget {
 }
 
 class _MobileShellState extends State<MobileShell> {
-  OrgTabId _tab = OrgTabId.home;
+  static const double _navBarVisibleHeight = 64;
+  static const double _navBarBottomPad = 12;
+  static const Duration _exitToastWindow = Duration(seconds: 2);
 
-  Widget _screenFor(OrgTabId tab) => switch (tab) {
-    OrgTabId.home => widget.home,
-    OrgTabId.templates => widget.templates,
-    OrgTabId.settings => widget.settings,
-  };
+  final PageController _pageController = PageController();
+  OrgTabId _tab = OrgTabId.home;
+  DateTime? _lastBackPress;
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  void _selectTab(OrgTabId tab) {
+    if (_tab == tab) return;
+    final index = OrgTabId.values.indexOf(tab);
+    setState(() => _tab = tab);
+    _pageController.animateToPage(
+      index,
+      duration: OrgDurations.page,
+      curve: OrgCurves.easeOutQuint,
+    );
+  }
+
+  bool _handleBack() {
+    if (_tab != OrgTabId.home) {
+      _selectTab(OrgTabId.home);
+      return false;
+    }
+    final now = DateTime.now();
+    final last = _lastBackPress;
+    if (last != null && now.difference(last) <= _exitToastWindow) {
+      return true;
+    }
+    _lastBackPress = now;
+    showOrgToast(
+      context,
+      message: 'Press back again to exit',
+      icon: Icons.logout_rounded,
+    );
+    return false;
+  }
 
   @override
   Widget build(BuildContext context) {
     final palette = OrgPaletteScope.of(context);
-    return OrgDensity(
-      level: OrgDensityLevel.comfortable,
-      child: Scaffold(
-        backgroundColor: palette.bg,
-        body: Stack(
-          children: [
-            AnimatedSwitcher(
-              duration: OrgDurations.page,
-              switchInCurve: OrgCurves.sheet,
-              transitionBuilder: (child, animation) {
-                return FadeTransition(
-                  opacity: animation,
-                  child: SlideTransition(
-                    position: Tween<Offset>(
-                      begin: const Offset(0, 0.02),
-                      end: Offset.zero,
-                    ).animate(animation),
-                    child: child,
-                  ),
-                );
-              },
-              child: KeyedSubtree(key: ValueKey(_tab), child: _screenFor(_tab)),
+    final safeBottom = MediaQuery.viewPaddingOf(context).bottom;
+    final navInset = _navBarVisibleHeight + _navBarBottomPad + safeBottom;
+    return PopScope<Object?>(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        final shouldPop = _handleBack();
+        if (!shouldPop || !mounted) return;
+        final navigator = Navigator.of(context);
+        if (navigator.canPop()) {
+          navigator.pop();
+        } else {
+          await SystemNavigator.pop();
+        }
+      },
+      child: OrgDensity(
+        level: OrgDensityLevel.comfortable,
+        child: OrgMobileChrome(
+          bottomInset: navInset,
+          child: Scaffold(
+            backgroundColor: palette.bg,
+            body: Stack(
+              children: [
+                PageView(
+                  controller: _pageController,
+                  physics: const NeverScrollableScrollPhysics(),
+                  onPageChanged: (index) {
+                    final next = OrgTabId.values[index];
+                    if (next != _tab) {
+                      setState(() => _tab = next);
+                    }
+                  },
+                  children: [widget.home, widget.templates, widget.settings],
+                ),
+                Positioned(
+                  left: 14,
+                  right: 14,
+                  bottom: safeBottom + _navBarBottomPad,
+                  child: _BottomNav(current: _tab, onSelect: _selectTab),
+                ),
+              ],
             ),
-            Positioned(
-              left: 14,
-              right: 14,
-              bottom: MediaQuery.viewPaddingOf(context).bottom + 12,
-              child: _BottomNav(
-                current: _tab,
-                onSelect: (tab) => setState(() => _tab = tab),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );

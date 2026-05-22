@@ -450,47 +450,64 @@ class _SummaryStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final compact = constraints.maxWidth < 560;
-        final tiles = <Widget>[
-          _MetricTile(
-            icon: Icons.note_alt_rounded,
-            label: 'Notes',
-            value: snapshot.notes.length.toString(),
+    final palette = OrgPaletteScope.of(context);
+    final compact = OrgDensity.of(context) == OrgDensityLevel.compact;
+    final stats = <_StatTile>[
+      _StatTile(
+        icon: Icons.note_alt_rounded,
+        label: 'Notes',
+        value: '${snapshot.notes.length}',
+      ),
+      _StatTile(
+        icon: Icons.dashboard_customize_rounded,
+        label: 'Templates',
+        value: '${snapshot.templates.length}',
+      ),
+      _StatTile(
+        icon: Icons.delete_outline_rounded,
+        label: 'Trash',
+        value: '${snapshot.trash.length}',
+      ),
+      _StatTile(
+        icon: Icons.folder_rounded,
+        label: 'Storage',
+        value: storage.maybeWhen(
+          data: (status) => status.isAvailable ? 'Ready' : 'Blocked',
+          orElse: () => 'Checking',
+        ),
+      ),
+    ];
+
+    return Container(
+      decoration: BoxDecoration(
+        color: palette.surface,
+        borderRadius: BorderRadius.circular(compact ? 16 : 20),
+        border: Border.all(color: palette.border),
+        boxShadow: [
+          BoxShadow(
+            color: palette.shadowSoft,
+            blurRadius: 28,
+            offset: const Offset(0, 12),
+            spreadRadius: -14,
           ),
-          _MetricTile(
-            icon: Icons.dashboard_customize_rounded,
-            label: 'Templates',
-            value: snapshot.templates.length.toString(),
-          ),
-          _MetricTile(
-            icon: Icons.delete_outline_rounded,
-            label: 'Trash',
-            value: snapshot.trash.length.toString(),
-          ),
-          _MetricTile(
-            icon: Icons.folder_rounded,
-            label: 'Storage',
-            value: storage.maybeWhen(
-              data: (status) => status.isAvailable ? 'Ready' : 'Blocked',
-              orElse: () => 'Checking',
-            ),
-          ),
-        ];
-        if (compact) {
-          return Wrap(spacing: 8, runSpacing: 8, children: tiles);
-        }
-        return Row(
-          children: tiles.map((tile) => Expanded(child: tile)).toList(),
-        );
-      },
+        ],
+      ),
+      padding: EdgeInsets.all(compact ? 12 : 14),
+      child: Row(
+        children: [
+          for (var index = 0; index < stats.length; index++) ...[
+            Expanded(child: _StatCell(stat: stats[index])),
+            if (index != stats.length - 1)
+              Container(width: 1, height: 42, color: palette.border),
+          ],
+        ],
+      ),
     );
   }
 }
 
-class _MetricTile extends StatelessWidget {
-  const _MetricTile({
+class _StatTile {
+  const _StatTile({
     required this.icon,
     required this.label,
     required this.value,
@@ -499,47 +516,40 @@ class _MetricTile extends StatelessWidget {
   final IconData icon;
   final String label;
   final String value;
+}
+
+class _StatCell extends StatelessWidget {
+  const _StatCell({required this.stat});
+
+  final _StatTile stat;
 
   @override
   Widget build(BuildContext context) {
     final palette = OrgPaletteScope.of(context);
-    return Container(
-      constraints: const BoxConstraints(minWidth: 120),
-      margin: const EdgeInsetsDirectional.only(end: 8),
-      padding: const EdgeInsetsDirectional.fromSTEB(12, 10, 12, 10),
-      decoration: BoxDecoration(
-        color: palette.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: palette.border),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: palette.accent, size: 17),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: palette.textSecondary,
-                fontWeight: FontWeight.w700,
-                fontSize: 12,
-              ),
-            ),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(stat.icon, size: 17, color: palette.accent),
+        const SizedBox(height: 4),
+        Text(
+          stat.value,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+            color: palette.text,
+            fontWeight: FontWeight.w800,
           ),
-          const SizedBox(width: 8),
-          Text(
-            value,
-            style: TextStyle(
-              color: palette.text,
-              fontWeight: FontWeight.w900,
-              fontSize: 13,
-            ),
+        ),
+        Text(
+          stat.label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+            color: palette.textTertiary,
+            fontWeight: FontWeight.w700,
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -642,7 +652,6 @@ class _CustomizationSection extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final palette = OrgPaletteScope.of(context);
     final notifier = ref.read(themeProvider.notifier);
     return _SettingsSection(
       icon: Icons.palette_rounded,
@@ -668,44 +677,110 @@ class _CustomizationSection extends ConsumerWidget {
           ),
           const SizedBox(height: 14),
           _Subhead(label: 'Accent'),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final accent in OrgAccents.presets)
-                _AccentSwatch(
-                  accent: accent,
-                  selected: theme.accentHue == accent.hue,
-                  onTap: () => notifier.setAccentHue(accent.hue),
-                ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          _SwitchRow(
-            icon: Icons.dark_mode_rounded,
-            label: 'OLED black',
-            value: theme.resolveOled(palette.brightness),
-            enabled:
-                theme.resolveBrightness(palette.brightness) == Brightness.dark,
-            onChanged: (value) => notifier.setOled(value),
-          ),
-          const SizedBox(height: 10),
-          _Subhead(label: 'Loading'),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final animation in OrgLoadingAnimation.values)
-                _ChoicePill(
-                  label: _loadingLabel(animation),
-                  icon: _loadingIcon(animation),
-                  selected: theme.loadingAnimation == animation,
-                  onTap: () => notifier.setLoadingAnimation(animation),
-                ),
-            ],
+          _AccentHueSlider(
+            hue: theme.accentHue,
+            onChanged: notifier.setAccentHue,
           ),
         ],
       ),
+    );
+  }
+}
+
+class _AccentHueSlider extends StatelessWidget {
+  const _AccentHueSlider({required this.hue, required this.onChanged});
+
+  final double hue;
+  final ValueChanged<double> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = OrgPaletteScope.of(context);
+    final accent = palette.accent;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: accent,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: accent.withAlpha(90),
+                    blurRadius: 14,
+                    spreadRadius: -4,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                _accentName(hue),
+                style: TextStyle(
+                  color: palette.text,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+            Text(
+              '${hue.round()}°',
+              style: TextStyle(
+                color: palette.textTertiary,
+                fontWeight: FontWeight.w800,
+                fontFamily: 'JetBrainsMono',
+                fontSize: 11.5,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 34,
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: Container(
+                  margin: const EdgeInsets.symmetric(vertical: 13),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: <Color>[
+                        Color(0xFFFF6B6B),
+                        Color(0xFFFFD166),
+                        Color(0xFF06D6A0),
+                        Color(0xFF118AB2),
+                        Color(0xFF9D4EDD),
+                        Color(0xFFFF6B6B),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+              ),
+              SliderTheme(
+                data: SliderTheme.of(context).copyWith(
+                  trackHeight: 6,
+                  thumbColor: accent,
+                  overlayColor: accent.withAlpha(40),
+                  activeTrackColor: Colors.transparent,
+                  inactiveTrackColor: Colors.transparent,
+                ),
+                child: Slider(
+                  min: 0,
+                  max: 360,
+                  value: hue,
+                  onChanged: onChanged,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
@@ -759,26 +834,6 @@ class _DataSection extends StatelessWidget {
               value: 'Unavailable',
             ),
           ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: _InfoRow(
-                  icon: Icons.note_alt_rounded,
-                  label: 'Notes',
-                  value: snapshot.notes.length.toString(),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _InfoRow(
-                  icon: Icons.delete_outline_rounded,
-                  label: 'Trash',
-                  value: snapshot.trash.length.toString(),
-                ),
-              ),
-            ],
-          ),
           const SizedBox(height: 12),
           _FullWidthButton(
             icon: busy
@@ -795,6 +850,9 @@ class _DataSection extends StatelessWidget {
                   icon: Icons.delete_outline_rounded,
                   label: 'Open trash',
                   onTap: onOpenTrash,
+                  badge: snapshot.trash.isEmpty
+                      ? null
+                      : snapshot.trash.length.toString(),
                 ),
               ),
               const SizedBox(width: 8),
@@ -948,21 +1006,11 @@ class _DangerZoneSection extends StatelessWidget {
       title: 'Danger Zone',
       subtitle: 'Permanent local storage actions',
       trailing: _StatusPill(label: 'Careful', color: palette.danger),
-      child: Column(
-        children: [
-          _InfoRow(
-            icon: Icons.delete_forever_rounded,
-            label: 'Wipe flow',
-            value: 'Typed confirm',
-          ),
-          const SizedBox(height: 12),
-          _FullWidthButton(
-            icon: Icons.warning_rounded,
-            label: 'Open danger zone',
-            onTap: onOpen,
-            destructive: true,
-          ),
-        ],
+      child: _FullWidthButton(
+        icon: Icons.warning_rounded,
+        label: 'Open danger zone',
+        onTap: onOpen,
+        destructive: true,
       ),
     );
   }
@@ -1119,12 +1167,14 @@ class _FullWidthButton extends StatefulWidget {
     required this.label,
     required this.onTap,
     this.destructive = false,
+    this.badge,
   });
 
   final IconData icon;
   final String label;
   final VoidCallback? onTap;
   final bool destructive;
+  final String? badge;
 
   @override
   State<_FullWidthButton> createState() => _FullWidthButtonState();
@@ -1138,6 +1188,8 @@ class _FullWidthButtonState extends State<_FullWidthButton> {
     final palette = OrgPaletteScope.of(context);
     final disabled = widget.onTap == null;
     final activeColor = widget.destructive ? palette.danger : palette.accent;
+    final fg = disabled ? palette.textTertiary : palette.onAccent;
+    final badge = widget.badge;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTapDown: disabled ? null : (_) => setState(() => _pressed = true),
@@ -1159,11 +1211,7 @@ class _FullWidthButtonState extends State<_FullWidthButton> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                widget.icon,
-                size: 17,
-                color: disabled ? palette.textTertiary : palette.onAccent,
-              ),
+              Icon(widget.icon, size: 17, color: fg),
               const SizedBox(width: 7),
               Flexible(
                 child: Text(
@@ -1171,12 +1219,43 @@ class _FullWidthButtonState extends State<_FullWidthButton> {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: disabled ? palette.textTertiary : palette.onAccent,
+                    color: fg,
                     fontWeight: FontWeight.w900,
                     fontSize: 13,
                   ),
                 ),
               ),
+              if (badge != null) ...[
+                const SizedBox(width: 8),
+                Container(
+                  constraints: const BoxConstraints(
+                    minWidth: 20,
+                    minHeight: 20,
+                  ),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: badge.length > 1 ? 5 : 0,
+                  ),
+                  decoration: BoxDecoration(
+                    color: fg.withAlpha(40),
+                    shape: badge.length > 1
+                        ? BoxShape.rectangle
+                        : BoxShape.circle,
+                    borderRadius: badge.length > 1
+                        ? BorderRadius.circular(999)
+                        : null,
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    badge,
+                    style: TextStyle(
+                      color: fg,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 11,
+                      height: 1,
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -1233,55 +1312,6 @@ class _ChoicePill extends StatelessWidget {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _AccentSwatch extends StatelessWidget {
-  const _AccentSwatch({
-    required this.accent,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final OrgAccentPreset accent;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = OrgPaletteScope.of(context);
-    return Tooltip(
-      message: accent.name,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: OrgDurations.toggle,
-          curve: OrgCurves.snap,
-          width: 48,
-          height: 38,
-          decoration: BoxDecoration(
-            color: accent.color,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: selected ? palette.text : Colors.transparent,
-              width: 2,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: accent.color.withAlpha(selected ? 95 : 40),
-                blurRadius: selected ? 20 : 10,
-                offset: const Offset(0, 8),
-                spreadRadius: -8,
-              ),
-            ],
-          ),
-          child: selected
-              ? Icon(Icons.check_rounded, color: palette.onAccent, size: 18)
-              : null,
         ),
       ),
     );
@@ -1438,24 +1468,6 @@ String _accentName(double hue) {
     if (accent.hue == hue) return accent.name;
   }
   return '${hue.toStringAsFixed(0)} deg';
-}
-
-String _loadingLabel(OrgLoadingAnimation animation) {
-  return switch (animation) {
-    OrgLoadingAnimation.ripple => 'Ripple',
-    OrgLoadingAnimation.stagger => 'Stagger',
-    OrgLoadingAnimation.orbit => 'Orbit',
-    OrgLoadingAnimation.pulse => 'Pulse',
-  };
-}
-
-IconData _loadingIcon(OrgLoadingAnimation animation) {
-  return switch (animation) {
-    OrgLoadingAnimation.ripple => Icons.radar_rounded,
-    OrgLoadingAnimation.stagger => Icons.stacked_line_chart_rounded,
-    OrgLoadingAnimation.orbit => Icons.blur_circular_rounded,
-    OrgLoadingAnimation.pulse => Icons.graphic_eq_rounded,
-  };
 }
 
 String _relativeTime(DateTime date) {

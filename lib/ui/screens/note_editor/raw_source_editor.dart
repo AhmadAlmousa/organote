@@ -83,13 +83,13 @@ class _RawSourceEditorScreenState extends ConsumerState<RawSourceEditorScreen> {
   void _touch() {
     if (_status == _RawSaveStatus.loading) return;
     _autosave?.cancel();
-    if (!_saving) {
+    if (_saving) {
+      _queuedSave = true;
+    } else if (_status != _RawSaveStatus.dirty) {
       setState(() {
         _status = _RawSaveStatus.dirty;
         _errorMessage = null;
       });
-    } else {
-      _queuedSave = true;
     }
     _autosave = Timer(_autosaveDelay, _save);
   }
@@ -256,7 +256,7 @@ class _RawSourceEditorScreenState extends ConsumerState<RawSourceEditorScreen> {
           focusNode: _sourceFocus,
           onChanged: _touch,
         );
-        final preview = _PreviewPane(source: _sourceController.text);
+        final preview = _PreviewPane(controller: _sourceController);
 
         if (_mode == _RawViewMode.editor) return source;
         if (_mode == _RawViewMode.preview) return preview;
@@ -617,14 +617,58 @@ class _SourcePane extends StatelessWidget {
   }
 }
 
-class _PreviewPane extends StatelessWidget {
-  const _PreviewPane({required this.source});
+class _PreviewPane extends StatefulWidget {
+  const _PreviewPane({required this.controller});
 
-  final String source;
+  final TextEditingController controller;
+
+  @override
+  State<_PreviewPane> createState() => _PreviewPaneState();
+}
+
+class _PreviewPaneState extends State<_PreviewPane> {
+  static const Duration _debounce = Duration(milliseconds: 220);
+
+  late String _renderedSource = widget.controller.text;
+  Timer? _renderTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_onControllerChanged);
+  }
+
+  @override
+  void didUpdateWidget(_PreviewPane oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller.removeListener(_onControllerChanged);
+      widget.controller.addListener(_onControllerChanged);
+      _renderedSource = widget.controller.text;
+    }
+  }
+
+  @override
+  void dispose() {
+    _renderTimer?.cancel();
+    widget.controller.removeListener(_onControllerChanged);
+    super.dispose();
+  }
+
+  void _onControllerChanged() {
+    _renderTimer?.cancel();
+    _renderTimer = Timer(_debounce, () {
+      if (!mounted) return;
+      final next = widget.controller.text;
+      if (next == _renderedSource) return;
+      setState(() => _renderedSource = next);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final palette = OrgPaletteScope.of(context);
+    final source = _renderedSource;
     final chars = source.characters.length;
     return _RawPanel(
       title: 'Rendered preview',

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../domain/models/models.dart';
+import '../../app/mobile_shell.dart';
 import '../../app/overlay_route.dart';
 import '../../state/library_provider.dart';
 import '../../theme/color_tokens.dart';
@@ -44,19 +45,11 @@ class TemplatesScreen extends ConsumerWidget {
       (sum, template) => sum + template.fields.length,
     );
 
+    final shellInset = OrgMobileChrome.bottomInsetOf(context);
+    final fabBottom = shellInset + 14;
+
     return Scaffold(
       backgroundColor: palette.bg,
-      floatingActionButton: compact
-          ? null
-          : Padding(
-              padding: const EdgeInsets.only(bottom: 14, right: 4),
-              child: OrgFab(
-                icon: Icons.add_box_rounded,
-                tooltip: 'New template',
-                onPressed: () => _openTemplateBuilder(context),
-              ),
-            ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       body: SafeArea(
         bottom: false,
         child: Stack(
@@ -119,21 +112,20 @@ class TemplatesScreen extends ConsumerWidget {
                   ),
                 ],
                 SliverToBoxAdapter(
-                  child: SizedBox(height: compact ? 100 : 118),
+                  child: SizedBox(height: shellInset + 32),
                 ),
               ],
             ),
-            if (compact)
-              Positioned(
-                right: 18,
-                bottom: 18,
-                child: OrgFab(
-                  icon: Icons.add_box_rounded,
-                  tooltip: 'New template',
-                  size: 52,
-                  onPressed: () => _openTemplateBuilder(context),
-                ),
+            Positioned(
+              right: 18,
+              bottom: fabBottom,
+              child: OrgFab(
+                icon: Icons.add_box_rounded,
+                tooltip: 'New template',
+                size: compact ? 52 : 60,
+                onPressed: () => _openTemplateBuilder(context),
               ),
+            ),
           ],
         ),
       ),

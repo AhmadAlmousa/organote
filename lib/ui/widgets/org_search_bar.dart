@@ -10,30 +10,58 @@ class OrgSearchBar extends StatefulWidget {
     required this.onChanged,
     this.placeholder = 'Search notes, fields, values…',
     this.onFilter,
+    this.focusNode,
   });
 
   final TextEditingController controller;
   final ValueChanged<String> onChanged;
   final String placeholder;
   final VoidCallback? onFilter;
+  final FocusNode? focusNode;
 
   @override
   State<OrgSearchBar> createState() => _OrgSearchBarState();
 }
 
 class _OrgSearchBarState extends State<OrgSearchBar> {
-  final FocusNode _focus = FocusNode();
+  FocusNode? _ownedFocus;
   bool _focused = false;
+
+  FocusNode get _focus => widget.focusNode ?? _ownedFocus!;
 
   @override
   void initState() {
     super.initState();
-    _focus.addListener(() => setState(() => _focused = _focus.hasFocus));
+    if (widget.focusNode == null) {
+      _ownedFocus = FocusNode();
+    }
+    _focus.addListener(_onFocusChanged);
+  }
+
+  void _onFocusChanged() {
+    if (!mounted) return;
+    setState(() => _focused = _focus.hasFocus);
+  }
+
+  @override
+  void didUpdateWidget(OrgSearchBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.focusNode != oldWidget.focusNode) {
+      (oldWidget.focusNode ?? _ownedFocus)?.removeListener(_onFocusChanged);
+      if (widget.focusNode == null && _ownedFocus == null) {
+        _ownedFocus = FocusNode();
+      } else if (widget.focusNode != null && _ownedFocus != null) {
+        _ownedFocus!.dispose();
+        _ownedFocus = null;
+      }
+      _focus.addListener(_onFocusChanged);
+    }
   }
 
   @override
   void dispose() {
-    _focus.dispose();
+    _focus.removeListener(_onFocusChanged);
+    _ownedFocus?.dispose();
     super.dispose();
   }
 

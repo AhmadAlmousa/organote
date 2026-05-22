@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../domain/models/models.dart';
+import '../../app/mobile_shell.dart';
 import '../../app/overlay_route.dart';
 import '../../state/app_providers.dart';
 import '../../state/library_provider.dart';
@@ -20,6 +21,7 @@ import '../../widgets/org_toast.dart';
 import '../../widgets/wordmark.dart';
 import '../note_editor/note_editor_screen.dart';
 import '../note_viewer/note_viewer_screen.dart';
+import '../settings/phase9_screens.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -30,11 +32,35 @@ class HomeScreen extends ConsumerStatefulWidget {
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   final TextEditingController _queryController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
+  bool _searchOpen = false;
 
   @override
   void dispose() {
     _queryController.dispose();
+    _searchFocusNode.dispose();
     super.dispose();
+  }
+
+  void _toggleSearch() {
+    setState(() => _searchOpen = !_searchOpen);
+    if (_searchOpen) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _searchFocusNode.requestFocus();
+      });
+    } else {
+      _searchFocusNode.unfocus();
+      if (_queryController.text.isNotEmpty) {
+        _queryController.clear();
+        ref.read(noteSearchProvider.notifier).setQuery('');
+      }
+    }
+  }
+
+  void _openComplianceReview() {
+    Navigator.of(context).push(
+      OrgOverlayRoute<void>(builder: (_) => const ComplianceReviewScreen()),
+    );
   }
 
   Future<void> _togglePinned(Note note) async {
@@ -91,15 +117,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       });
     final visible = search.apply(byPin).toList();
 
+    final shellInset = OrgMobileChrome.bottomInsetOf(context);
+    final listBottomPad = shellInset + (compact ? 16 : 24);
+    final fabBottom = shellInset + 14;
+
     return Scaffold(
       backgroundColor: palette.bg,
-      floatingActionButton: compact
-          ? null
-          : Padding(
-              padding: const EdgeInsets.only(bottom: 14, right: 4),
-              child: OrgFab(onPressed: _createNote, tooltip: 'New note'),
-            ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       body: SafeArea(
         bottom: false,
         child: Stack(
@@ -109,25 +132,38 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               slivers: [
                 SliverToBoxAdapter(
                   child: _HomeHeader(
-                    notesCount: notes.length,
                     compliance: library.complianceSummary.activeCount,
+                    onToggleSearch: _toggleSearch,
+                    onOpenCompliance: _openComplianceReview,
+                    searchOpen: _searchOpen,
                   ),
                 ),
                 SliverToBoxAdapter(
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: compact ? 12 : 18,
-                    ),
-                    child: OrgSearchBar(
-                      controller: _queryController,
-                      onChanged: searchNotifier.setQuery,
-                      onFilter: () => _showFilterSheet(
-                        context,
-                        library: library,
-                        search: search,
-                        searchNotifier: searchNotifier,
-                      ),
-                    ),
+                  child: AnimatedSize(
+                    duration: OrgDurations.toggle,
+                    curve: OrgCurves.easeOutQuint,
+                    alignment: Alignment.topCenter,
+                    child: _searchOpen
+                        ? Padding(
+                            padding: EdgeInsets.fromLTRB(
+                              compact ? 12 : 18,
+                              0,
+                              compact ? 12 : 18,
+                              10,
+                            ),
+                            child: OrgSearchBar(
+                              controller: _queryController,
+                              focusNode: _searchFocusNode,
+                              onChanged: searchNotifier.setQuery,
+                              onFilter: () => _showFilterSheet(
+                                context,
+                                library: library,
+                                search: search,
+                                searchNotifier: searchNotifier,
+                              ),
+                            ),
+                          )
+                        : const SizedBox.shrink(),
                   ),
                 ),
                 SliverToBoxAdapter(
@@ -188,7 +224,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       compact ? 12 : 18,
                       0,
                       compact ? 12 : 18,
-                      compact ? 24 : 110,
+                      listBottomPad,
                     ),
                     sliver: SliverList.separated(
                       itemCount: visible.length,
@@ -217,16 +253,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   ),
               ],
             ),
-            if (compact)
-              Positioned(
-                right: 18,
-                bottom: 18,
-                child: OrgFab(
-                  onPressed: _createNote,
-                  tooltip: 'New note',
-                  size: 52,
-                ),
+            Positioned(
+              right: 18,
+              bottom: fabBottom,
+              child: OrgFab(
+                onPressed: _createNote,
+                tooltip: 'New note',
+                size: compact ? 52 : 60,
               ),
+            ),
           ],
         ),
       ),
@@ -405,14 +440,20 @@ class _FilterChipButton extends StatelessWidget {
 }
 
 class _HomeHeader extends StatelessWidget {
-  const _HomeHeader({required this.notesCount, required this.compliance});
+  const _HomeHeader({
+    required this.compliance,
+    required this.onToggleSearch,
+    required this.onOpenCompliance,
+    required this.searchOpen,
+  });
 
-  final int notesCount;
   final int compliance;
+  final VoidCallback onToggleSearch;
+  final VoidCallback onOpenCompliance;
+  final bool searchOpen;
 
   @override
   Widget build(BuildContext context) {
-    final palette = OrgPaletteScope.of(context);
     final density = OrgDensity.of(context);
     final compact = density == OrgDensityLevel.compact;
     return Padding(
@@ -420,92 +461,96 @@ class _HomeHeader extends StatelessWidget {
         compact ? 12 : 18,
         compact ? 6 : 14,
         compact ? 12 : 18,
-        compact ? 4 : 12,
+        compact ? 6 : 12,
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Row(
-            children: [
-              Wordmark(size: compact ? 18 : 20),
-              const Spacer(),
-              if (compliance > 0)
-                Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: _CompliancePill(count: compliance),
-                ),
-              OrgIconButton(
-                icon: Icons.search_rounded,
-                size: 38,
-                tooltip: 'Quick search',
-                onPressed: () {},
-              ),
-              const SizedBox(width: 8),
-              OrgIconButton(
-                icon: Icons.notifications_none_rounded,
-                size: 38,
-                tooltip: 'Notifications',
-                onPressed: () {},
-              ),
-            ],
+          Wordmark(size: compact ? 18 : 20),
+          const Spacer(),
+          OrgIconButton(
+            icon: searchOpen
+                ? Icons.search_off_rounded
+                : Icons.search_rounded,
+            size: 38,
+            tooltip: searchOpen ? 'Close search' : 'Search',
+            onPressed: onToggleSearch,
           ),
-          if (!compact) ...[
-            const SizedBox(height: 12),
-            Text(
-              'Good morning,',
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                color: palette.text,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            Text(
-              notesCount == 0
-                  ? 'fresh canvas — make something.'
-                  : '$notesCount note${notesCount == 1 ? '' : 's'} ready to flow.',
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                color: palette.accent,
-                fontWeight: FontWeight.w700,
-                letterSpacing: -0.018,
-              ),
-            ),
-          ],
-          const SizedBox(height: 14),
+          const SizedBox(width: 8),
+          _NotificationBell(
+            compliance: compliance,
+            onPressed: onOpenCompliance,
+          ),
         ],
       ),
     );
   }
 }
 
-class _CompliancePill extends StatelessWidget {
-  const _CompliancePill({required this.count});
+class _NotificationBell extends StatelessWidget {
+  const _NotificationBell({
+    required this.compliance,
+    required this.onPressed,
+  });
 
-  final int count;
+  final int compliance;
+  final VoidCallback onPressed;
 
   @override
   Widget build(BuildContext context) {
     final palette = OrgPaletteScope.of(context);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: palette.danger.withAlpha(40),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: palette.danger.withAlpha(80)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.bolt_rounded, color: palette.danger, size: 14),
-          const SizedBox(width: 4),
-          Text(
-            '$count',
-            style: TextStyle(
-              color: palette.danger,
-              fontWeight: FontWeight.w800,
-              fontSize: 12,
+    final hasIssues = compliance > 0;
+    final label = compliance > 99 ? '99+' : '$compliance';
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        OrgIconButton(
+          icon: hasIssues
+              ? Icons.notifications_active_rounded
+              : Icons.notifications_none_rounded,
+          size: 38,
+          tooltip: hasIssues
+              ? '$compliance compliance issue${compliance == 1 ? '' : 's'}'
+              : 'No notifications',
+          foreground: hasIssues ? palette.danger : null,
+          onPressed: onPressed,
+        ),
+        if (hasIssues)
+          Positioned(
+            right: -2,
+            top: -2,
+            child: IgnorePointer(
+              child: Container(
+                constraints: const BoxConstraints(
+                  minWidth: 18,
+                  minHeight: 18,
+                ),
+                padding: EdgeInsets.symmetric(
+                  horizontal: label.length > 1 ? 4 : 0,
+                ),
+                decoration: BoxDecoration(
+                  color: palette.danger,
+                  shape: label.length > 1
+                      ? BoxShape.rectangle
+                      : BoxShape.circle,
+                  borderRadius: label.length > 1
+                      ? BorderRadius.circular(999)
+                      : null,
+                  border: Border.all(color: palette.bg, width: 2),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    color: palette.onAccent,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 10,
+                    height: 1,
+                  ),
+                ),
+              ),
             ),
           ),
-        ],
-      ),
+      ],
     );
   }
 }

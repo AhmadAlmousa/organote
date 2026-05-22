@@ -10,7 +10,6 @@ import '../../state/app_providers.dart';
 import '../../state/library_provider.dart';
 import '../../theme/color_tokens.dart';
 import '../../theme/density.dart';
-import '../../theme/motion.dart';
 import '../../util/category_color.dart';
 import '../../util/relative_time.dart';
 import '../../util/share_intent.dart';
@@ -321,17 +320,6 @@ class _ViewerBodyState extends ConsumerState<_ViewerBody> {
               onMore: () => _showMoreMenu(context),
             ),
           ),
-          SliverPadding(
-            padding: EdgeInsetsDirectional.fromSTEB(
-              horizontalPad,
-              compact ? 12 : 16,
-              horizontalPad,
-              0,
-            ),
-            sliver: SliverToBoxAdapter(
-              child: _CopyHint(accent: widget.accent, palette: palette),
-            ),
-          ),
           if (fieldsList.isEmpty && widget.note.body.trim().isEmpty)
             SliverFillRemaining(
               hasScrollBody: false,
@@ -372,20 +360,8 @@ class _ViewerBodyState extends ConsumerState<_ViewerBody> {
                   ),
                 ),
               ),
-            SliverPadding(
-              padding: EdgeInsetsDirectional.fromSTEB(
-                horizontalPad,
-                22,
-                horizontalPad,
-                compact ? 28 : 36,
-              ),
-              sliver: SliverToBoxAdapter(
-                child: _ShareRow(
-                  accent: widget.accent,
-                  palette: palette,
-                  onShare: () => _share(context),
-                ),
-              ),
+            SliverToBoxAdapter(
+              child: SizedBox(height: compact ? 28 : 36),
             ),
           ],
         ],
@@ -908,42 +884,6 @@ class _TagPill extends StatelessWidget {
   }
 }
 
-class _CopyHint extends StatelessWidget {
-  const _CopyHint({required this.accent, required this.palette});
-
-  final Color accent;
-  final OrgPalette palette;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsetsDirectional.fromSTEB(12, 8, 14, 8),
-      decoration: BoxDecoration(
-        color: palette.bgSecondary,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: palette.border),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.auto_awesome_rounded, size: 14, color: accent),
-          const SizedBox(width: 8),
-          Flexible(
-            child: Text(
-              'Tap any field to copy its value',
-              style: TextStyle(
-                color: palette.textSecondary,
-                fontWeight: FontWeight.w600,
-                fontSize: 12,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _BodyBlock extends StatelessWidget {
   const _BodyBlock({required this.body, required this.palette});
 
@@ -963,92 +903,6 @@ class _BodyBlock extends StatelessWidget {
         body,
         style: TextStyle(color: palette.text, fontSize: 14, height: 1.45),
       ),
-    );
-  }
-}
-
-class _ShareRow extends StatefulWidget {
-  const _ShareRow({
-    required this.accent,
-    required this.palette,
-    required this.onShare,
-  });
-
-  final Color accent;
-  final OrgPalette palette;
-  final Future<void> Function() onShare;
-
-  @override
-  State<_ShareRow> createState() => _ShareRowState();
-}
-
-class _ShareRowState extends State<_ShareRow> {
-  bool _down = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final palette = widget.palette;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        GestureDetector(
-          onTapDown: (_) => setState(() => _down = true),
-          onTapUp: (_) => setState(() => _down = false),
-          onTapCancel: () => setState(() => _down = false),
-          onTap: () => widget.onShare(),
-          child: AnimatedScale(
-            scale: _down ? 0.97 : 1.0,
-            duration: OrgDurations.tap,
-            curve: OrgCurves.spring,
-            child: Container(
-              alignment: Alignment.center,
-              padding: const EdgeInsetsDirectional.symmetric(vertical: 14),
-              decoration: BoxDecoration(
-                color: widget.accent,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: widget.accent.withAlpha(90),
-                    blurRadius: 22,
-                    offset: const Offset(0, 10),
-                    spreadRadius: -4,
-                  ),
-                ],
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.ios_share_rounded,
-                    size: 16,
-                    color: palette.onAccent,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Share as plain text',
-                    style: TextStyle(
-                      color: palette.onAccent,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 14,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Center(
-          child: Text(
-            'Frontmatter and schema are stripped automatically.',
-            style: TextStyle(
-              color: palette.textTertiary,
-              fontSize: 11.5,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ),
-      ],
     );
   }
 }

@@ -89,7 +89,11 @@ class _OrgChipState extends State<OrgChip> {
               ),
               if (widget.count != null) ...[
                 const SizedBox(width: 6),
-                _CountBadge(count: widget.count!, active: widget.active),
+                _CountBadge(
+                  count: widget.count!,
+                  active: widget.active,
+                  hue: hue,
+                ),
               ],
             ],
           ),
@@ -100,33 +104,43 @@ class _OrgChipState extends State<OrgChip> {
 }
 
 class _CountBadge extends StatelessWidget {
-  const _CountBadge({required this.count, required this.active});
+  const _CountBadge({
+    required this.count,
+    required this.active,
+    required this.hue,
+  });
 
   final int count;
   final bool active;
+  final Color hue;
 
   @override
   Widget build(BuildContext context) {
     final palette = OrgPaletteScope.of(context);
+    final isDark = palette.brightness == Brightness.dark;
+    final Color bg;
+    final Color fg;
+    if (active) {
+      bg = hue;
+      fg = palette.onAccent;
+    } else {
+      bg = palette.bgSecondary;
+      fg = isDark ? palette.text : palette.textSecondary;
+    }
+    final label = '$count';
+    final width = 20.0 + (label.length > 1 ? (label.length - 1) * 5.5 : 0);
     return Container(
-      constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
-      padding: const EdgeInsets.symmetric(horizontal: 5),
-      decoration: BoxDecoration(
-        color: active
-            ? palette.accent
-            : palette.surfaceHigh.withAlpha(
-                palette.brightness == Brightness.dark ? 64 : 96,
-              ),
-        borderRadius: BorderRadius.circular(999),
-      ),
+      width: width,
+      height: 20,
+      decoration: BoxDecoration(color: bg, shape: BoxShape.circle),
       alignment: Alignment.center,
       child: Text(
-        '$count',
+        label,
         style: TextStyle(
           fontWeight: FontWeight.w800,
           fontSize: 10.5,
           height: 1,
-          color: active ? palette.onAccent : palette.textSecondary,
+          color: fg,
         ),
       ),
     );

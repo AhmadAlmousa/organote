@@ -498,7 +498,7 @@ class _SaveButtonState extends State<_SaveButton> {
   }
 }
 
-class _HeaderRow extends StatelessWidget {
+class _HeaderRow extends StatefulWidget {
   const _HeaderRow({
     required this.icon,
     required this.nameController,
@@ -516,41 +516,96 @@ class _HeaderRow extends StatelessWidget {
   final ValueChanged<String> onNameChanged;
 
   @override
+  State<_HeaderRow> createState() => _HeaderRowState();
+}
+
+class _HeaderRowState extends State<_HeaderRow> {
+  final FocusNode _focus = FocusNode();
+  bool _focused = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _focus.addListener(() {
+      if (!mounted) return;
+      setState(() => _focused = _focus.hasFocus);
+    });
+  }
+
+  @override
+  void dispose() {
+    _focus.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final palette = OrgPaletteScope.of(context);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         EmojiPickerButton(
-          value: icon,
-          onPicked: onIconPicked,
+          value: widget.icon,
+          onPicked: widget.onIconPicked,
           size: 56,
           label: 'Template icon',
         ),
-        const SizedBox(width: 14),
+        const SizedBox(width: 12),
         Expanded(
-          child: TextField(
-            controller: nameController,
-            onChanged: onNameChanged,
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-              color: palette.text,
-              fontWeight: FontWeight.w800,
-              fontSize: 22,
-            ),
-            decoration: InputDecoration(
-              hintText: 'Template name',
-              hintStyle: TextStyle(
-                color: palette.textTertiary,
-                fontWeight: FontWeight.w600,
-                fontSize: 22,
+          child: AnimatedContainer(
+            duration: OrgDurations.toggle,
+            curve: OrgCurves.spring,
+            padding: const EdgeInsetsDirectional.fromSTEB(14, 12, 14, 12),
+            decoration: BoxDecoration(
+              color: palette.surface,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: _focused ? widget.accent : palette.border,
+                width: _focused ? 1.4 : 1,
               ),
-              border: InputBorder.none,
-              enabledBorder: InputBorder.none,
-              focusedBorder: InputBorder.none,
-              isDense: true,
-              contentPadding: EdgeInsets.zero,
+              boxShadow: [
+                if (_focused)
+                  BoxShadow(
+                    color: widget.accentSoft,
+                    blurRadius: 22,
+                    offset: const Offset(0, 8),
+                    spreadRadius: -6,
+                  )
+                else
+                  BoxShadow(
+                    color: palette.shadowSoft,
+                    blurRadius: 18,
+                    offset: const Offset(0, 8),
+                    spreadRadius: -10,
+                  ),
+              ],
             ),
-            textCapitalization: TextCapitalization.words,
+            child: TextField(
+              controller: widget.nameController,
+              focusNode: _focus,
+              onChanged: widget.onNameChanged,
+              cursorColor: widget.accent,
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                color: palette.text,
+                fontWeight: FontWeight.w800,
+                fontSize: 18,
+                letterSpacing: 0,
+              ),
+              decoration: InputDecoration(
+                hintText: 'Template name',
+                hintStyle: TextStyle(
+                  color: palette.textTertiary,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 18,
+                ),
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                isCollapsed: true,
+                contentPadding: EdgeInsets.zero,
+              ),
+              textCapitalization: TextCapitalization.words,
+            ),
           ),
         ),
       ],
@@ -571,60 +626,170 @@ class _LayoutSegmented extends StatelessWidget {
   final Color accentSoft;
   final ValueChanged<TemplateLayout> onChanged;
 
-  static const _options = [
-    (TemplateLayout.cards, Icons.dashboard_rounded, 'Cards'),
-    (TemplateLayout.table, Icons.table_rows_rounded, 'Table'),
-    (TemplateLayout.grid, Icons.grid_view_rounded, 'Grid'),
+  static const _options = <_LayoutOption>[
+    _LayoutOption(
+      layout: TemplateLayout.cards,
+      icon: Icons.dashboard_rounded,
+      label: 'Cards',
+      description: 'Stacked notes',
+    ),
+    _LayoutOption(
+      layout: TemplateLayout.table,
+      icon: Icons.table_rows_rounded,
+      label: 'Table',
+      description: 'Rows of records',
+    ),
+    _LayoutOption(
+      layout: TemplateLayout.grid,
+      icon: Icons.grid_view_rounded,
+      label: 'Grid',
+      description: 'Tile layout',
+    ),
   ];
 
   @override
   Widget build(BuildContext context) {
     final palette = OrgPaletteScope.of(context);
-    return Container(
-      height: 44,
-      decoration: BoxDecoration(
-        color: palette.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: palette.border),
-      ),
-      child: Row(
-        children: _options.map((opt) {
-          final (layout, icon, label) = opt;
-          final active = value == layout;
-          return Expanded(
-            child: GestureDetector(
-              onTap: () => onChanged(layout),
-              child: AnimatedContainer(
-                duration: OrgDurations.toggle,
-                curve: OrgCurves.spring,
-                margin: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  color: active ? accentSoft : Colors.transparent,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      icon,
-                      size: 15,
-                      color: active ? accent : palette.textSecondary,
-                    ),
-                    const SizedBox(width: 5),
-                    Text(
-                      label,
-                      style: TextStyle(
-                        color: active ? accent : palette.textSecondary,
-                        fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ],
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Note layout',
+          style: TextStyle(
+            color: palette.textSecondary,
+            fontSize: 12,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0.05,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            for (var i = 0; i < _options.length; i++) ...[
+              if (i > 0) const SizedBox(width: 10),
+              Expanded(
+                child: _LayoutTile(
+                  option: _options[i],
+                  active: value == _options[i].layout,
+                  accent: accent,
+                  accentSoft: accentSoft,
+                  palette: palette,
+                  onTap: () => onChanged(_options[i].layout),
                 ),
               ),
+            ],
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _LayoutOption {
+  const _LayoutOption({
+    required this.layout,
+    required this.icon,
+    required this.label,
+    required this.description,
+  });
+
+  final TemplateLayout layout;
+  final IconData icon;
+  final String label;
+  final String description;
+}
+
+class _LayoutTile extends StatelessWidget {
+  const _LayoutTile({
+    required this.option,
+    required this.active,
+    required this.accent,
+    required this.accentSoft,
+    required this.palette,
+    required this.onTap,
+  });
+
+  final _LayoutOption option;
+  final bool active;
+  final Color accent;
+  final Color accentSoft;
+  final OrgPalette palette;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedContainer(
+        duration: OrgDurations.toggle,
+        curve: OrgCurves.spring,
+        padding: const EdgeInsetsDirectional.fromSTEB(12, 12, 12, 12),
+        decoration: BoxDecoration(
+          color: active ? accentSoft : palette.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: active ? accent.withAlpha(140) : palette.border,
+            width: active ? 1.4 : 1,
+          ),
+          boxShadow: [
+            if (active)
+              BoxShadow(
+                color: accent.withAlpha(60),
+                blurRadius: 18,
+                offset: const Offset(0, 8),
+                spreadRadius: -8,
+              )
+            else
+              BoxShadow(
+                color: palette.shadowSoft,
+                blurRadius: 14,
+                offset: const Offset(0, 6),
+                spreadRadius: -12,
+              ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: active ? accent : palette.bgSecondary,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              alignment: Alignment.center,
+              child: Icon(
+                option.icon,
+                size: 20,
+                color: active ? palette.onAccent : palette.textSecondary,
+              ),
             ),
-          );
-        }).toList(),
+            const SizedBox(height: 10),
+            Text(
+              option.label,
+              style: TextStyle(
+                color: active ? accent : palette.text,
+                fontWeight: FontWeight.w900,
+                fontSize: 13.5,
+                letterSpacing: 0,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              option.description,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: palette.textTertiary,
+                fontWeight: FontWeight.w600,
+                fontSize: 11,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
