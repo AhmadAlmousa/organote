@@ -4,6 +4,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 
 import '../../../domain/models/models.dart';
 import '../../../services/storage/file_store.dart';
+import '../../app/mobile_shell.dart';
 import '../../app/overlay_route.dart';
 import '../../state/app_providers.dart';
 import '../../state/library_provider.dart';
@@ -211,6 +212,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
     final density = OrgDensity.of(context);
     final compact = density == OrgDensityLevel.compact;
+    final shellInset = OrgMobileChrome.bottomInsetOf(context);
 
     return Scaffold(
       backgroundColor: palette.bg,
@@ -229,7 +231,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     horizontalPad,
                     18,
                     horizontalPad,
-                    28,
+                    shellInset + 28,
                   ),
                   sliver: SliverToBoxAdapter(
                     child: Center(

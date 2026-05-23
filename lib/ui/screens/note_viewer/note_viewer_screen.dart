@@ -370,10 +370,61 @@ class _ViewerBodyState extends ConsumerState<_ViewerBody> {
   }
 
   List<Widget> _buildRecordWidgets() {
+    final imageRefs = _collectImageRefs();
+    AssetRepository? assetRepository;
+    AssetRepository requireAssetRepository() {
+      final existing = assetRepository;
+      if (existing != null) return existing;
+      final repo = ref.read(assetRepositoryProvider);
+      assetRepository = repo;
+      return repo;
+    }
+
     final widgets = <Widget>[];
+    var imageCursor = 0;
     for (var i = 0; i < widget.note.records.length; i += 1) {
       final record = widget.note.records[i];
-      final fields = _buildFieldRows(record);
+      final orderedKeys = <String>[];
+      final templateFieldByKey = <String, TemplateField>{};
+      if (widget.template != null) {
+        for (final field in widget.template!.fields) {
+          if (record.values.containsKey(field.label)) {
+            orderedKeys.add(field.label);
+            templateFieldByKey[field.label] = field;
+          } else if (record.values.containsKey(field.id)) {
+            orderedKeys.add(field.id);
+            templateFieldByKey[field.id] = field;
+          }
+        }
+      }
+      for (final key in record.values.keys) {
+        if (!orderedKeys.contains(key)) orderedKeys.add(key);
+      }
+      final fields = <Widget>[];
+      for (var k = 0; k < orderedKeys.length; k += 1) {
+        final key = orderedKeys[k];
+        final value = record.values[key] ?? '';
+        final field = templateFieldByKey[key];
+        final last = k == orderedKeys.length - 1;
+        if (field?.type == TemplateFieldType.image) {
+          final hasImage = value.trim().isNotEmpty;
+          final index = hasImage ? imageCursor : -1;
+          if (hasImage) imageCursor += 1;
+          fields.add(
+            _ImageFieldRow(
+              label: field?.label ?? key,
+              value: value,
+              accent: widget.accent,
+              accentSoft: widget.accentSoft,
+              assetRepository: requireAssetRepository(),
+              imageRefs: imageRefs,
+              imageIndex: index,
+            ),
+          );
+        } else {
+          fields.add(_fieldRow(key, value, field, last: last));
+        }
+      }
       widgets.add(
         RecordCard(
           index: i,
@@ -388,32 +439,24 @@ class _ViewerBodyState extends ConsumerState<_ViewerBody> {
     return widgets;
   }
 
-  List<Widget> _buildFieldRows(NoteRecord record) {
-    final orderedKeys = <String>[];
-    final templateFieldByKey = <String, TemplateField>{};
-    if (widget.template != null) {
+  List<_ImageRef> _collectImageRefs() {
+    final refs = <_ImageRef>[];
+    if (widget.template == null) return refs;
+    for (final record in widget.note.records) {
       for (final field in widget.template!.fields) {
+        if (field.type != TemplateFieldType.image) continue;
+        String? raw;
         if (record.values.containsKey(field.label)) {
-          orderedKeys.add(field.label);
-          templateFieldByKey[field.label] = field;
+          raw = record.values[field.label];
         } else if (record.values.containsKey(field.id)) {
-          orderedKeys.add(field.id);
-          templateFieldByKey[field.id] = field;
+          raw = record.values[field.id];
         }
+        final value = raw?.trim();
+        if (value == null || value.isEmpty) continue;
+        refs.add(_ImageRef(label: field.label, path: value));
       }
     }
-    for (final key in record.values.keys) {
-      if (!orderedKeys.contains(key)) orderedKeys.add(key);
-    }
-    return [
-      for (var i = 0; i < orderedKeys.length; i += 1)
-        _fieldRow(
-          orderedKeys[i],
-          record.values[orderedKeys[i]] ?? '',
-          templateFieldByKey[orderedKeys[i]],
-          last: i == orderedKeys.length - 1,
-        ),
-    ];
+    return refs;
   }
 
   Widget _fieldRow(
@@ -425,15 +468,6 @@ class _ViewerBodyState extends ConsumerState<_ViewerBody> {
     final mono = _isMono(field);
     final mask = field?.type == TemplateFieldType.password;
     final label = field?.label ?? key;
-    if (field?.type == TemplateFieldType.image) {
-      return _ImageFieldRow(
-        label: label,
-        value: value,
-        accent: widget.accent,
-        accentSoft: widget.accentSoft,
-        assetRepository: ref.read(assetRepositoryProvider),
-      );
-    }
     return CopyRow(
       label: label,
       value: value,
@@ -907,6 +941,13 @@ class _BodyBlock extends StatelessWidget {
   }
 }
 
+class _ImageRef {
+  const _ImageRef({required this.label, required this.path});
+
+  final String label;
+  final String path;
+}
+
 class _ImageFieldRow extends StatefulWidget {
   const _ImageFieldRow({
     required this.label,
@@ -914,6 +955,8 @@ class _ImageFieldRow extends StatefulWidget {
     required this.accent,
     required this.accentSoft,
     required this.assetRepository,
+    required this.imageRefs,
+    required this.imageIndex,
   });
 
   final String label;
@@ -921,6 +964,8 @@ class _ImageFieldRow extends StatefulWidget {
   final Color accent;
   final Color accentSoft;
   final AssetRepository assetRepository;
+  final List<_ImageRef> imageRefs;
+  final int imageIndex;
 
   @override
   State<_ImageFieldRow> createState() => _ImageFieldRowState();
@@ -952,36 +997,19 @@ class _ImageFieldRowState extends State<_ImageFieldRow> {
     );
   }
 
-  void _openPreview(BuildContext context, Uint8List bytes) {
+  void _openPreview(BuildContext context) {
+    if (widget.imageIndex < 0 || widget.imageRefs.isEmpty) return;
     final palette = OrgPaletteScope.of(context);
     showDialog<void>(
       context: context,
+      barrierColor: Colors.black87,
       builder: (dialogContext) {
-        return Dialog.fullscreen(
-          backgroundColor: palette.bg,
-          child: Stack(
-            children: [
-              Positioned.fill(
-                child: InteractiveViewer(
-                  minScale: 0.7,
-                  maxScale: 5,
-                  child: Center(
-                    child: Image.memory(bytes, fit: BoxFit.contain),
-                  ),
-                ),
-              ),
-              PositionedDirectional(
-                top: MediaQuery.paddingOf(dialogContext).top + 10,
-                start: 12,
-                child: OrgIconButton(
-                  icon: Icons.close_rounded,
-                  onPressed: () => Navigator.of(dialogContext).pop(),
-                  tooltip: 'Close',
-                  size: 40,
-                ),
-              ),
-            ],
-          ),
+        return _ImageGalleryDialog(
+          imageRefs: widget.imageRefs,
+          initialIndex: widget.imageIndex,
+          assetRepository: widget.assetRepository,
+          accent: widget.accent,
+          palette: palette,
         );
       },
     );
@@ -1004,22 +1032,13 @@ class _ImageFieldRowState extends State<_ImageFieldRow> {
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: palette.border),
         ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _ViewerImageThumb(
-              future: future,
-              palette: palette,
-              accent: widget.accent,
-              onOpen: (bytes) => _openPreview(context, bytes),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
                     widget.label.toUpperCase(),
                     style: TextStyle(
                       color: palette.textTertiary,
@@ -1028,43 +1047,41 @@ class _ImageFieldRowState extends State<_ImageFieldRow> {
                       letterSpacing: 0.06,
                     ),
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    path.isEmpty ? '(no image)' : path,
-                    style: TextStyle(
+                ),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => _copyPath(context),
+                  child: Container(
+                    width: 30,
+                    height: 30,
+                    decoration: BoxDecoration(
+                      color: path.isEmpty
+                          ? Colors.transparent
+                          : widget.accentSoft,
+                      borderRadius: BorderRadius.circular(9),
+                      border: Border.all(
+                        color: path.isEmpty
+                            ? palette.border
+                            : Colors.transparent,
+                      ),
+                    ),
+                    child: Icon(
+                      Icons.copy_rounded,
+                      size: 14,
                       color: path.isEmpty
                           ? palette.textTertiary
-                          : palette.textSecondary,
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w600,
-                      fontFamily: 'JetBrainsMono',
+                          : widget.accent,
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-            const SizedBox(width: 8),
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => _copyPath(context),
-              child: Container(
-                width: 30,
-                height: 30,
-                decoration: BoxDecoration(
-                  color: path.isEmpty ? Colors.transparent : widget.accentSoft,
-                  borderRadius: BorderRadius.circular(9),
-                  border: Border.all(
-                    color: path.isEmpty ? palette.border : Colors.transparent,
-                  ),
-                ),
-                child: Icon(
-                  Icons.copy_rounded,
-                  size: 14,
-                  color: path.isEmpty ? palette.textTertiary : widget.accent,
-                ),
-              ),
+            const SizedBox(height: 8),
+            _ViewerImageThumb(
+              future: future,
+              palette: palette,
+              accent: widget.accent,
+              onOpen: () => _openPreview(context),
             ),
           ],
         ),
@@ -1084,7 +1101,7 @@ class _ViewerImageThumb extends StatelessWidget {
   final Future<Uint8List>? future;
   final OrgPalette palette;
   final Color accent;
-  final ValueChanged<Uint8List> onOpen;
+  final VoidCallback onOpen;
 
   @override
   Widget build(BuildContext context) {
@@ -1093,7 +1110,7 @@ class _ViewerImageThumb extends StatelessWidget {
         palette: palette,
         child: Icon(
           Icons.image_outlined,
-          size: 20,
+          size: 28,
           color: palette.textSecondary,
         ),
       );
@@ -1105,8 +1122,8 @@ class _ViewerImageThumb extends StatelessWidget {
           return _ThumbFrame(
             palette: palette,
             child: SizedBox(
-              width: 18,
-              height: 18,
+              width: 22,
+              height: 22,
               child: CircularProgressIndicator(strokeWidth: 2, color: accent),
             ),
           );
@@ -1116,23 +1133,26 @@ class _ViewerImageThumb extends StatelessWidget {
             palette: palette,
             child: Icon(
               Icons.broken_image_outlined,
-              size: 20,
+              size: 28,
               color: palette.danger,
             ),
           );
         }
         final bytes = snapshot.data!;
         return GestureDetector(
-          onTap: () => onOpen(bytes),
+          onTap: onOpen,
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: SizedBox(
-              width: 56,
-              height: 44,
-              child: Image.memory(
-                bytes,
-                fit: BoxFit.cover,
-                gaplessPlayback: true,
+            borderRadius: BorderRadius.circular(12),
+            child: AspectRatio(
+              aspectRatio: 16 / 9,
+              child: Container(
+                color: palette.surfaceHigh,
+                alignment: Alignment.center,
+                child: Image.memory(
+                  bytes,
+                  fit: BoxFit.cover,
+                  gaplessPlayback: true,
+                ),
               ),
             ),
           ),
@@ -1150,15 +1170,175 @@ class _ThumbFrame extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 56,
-      height: 44,
-      decoration: BoxDecoration(
-        color: palette.surfaceHigh,
-        borderRadius: BorderRadius.circular(10),
+    return AspectRatio(
+      aspectRatio: 16 / 9,
+      child: Container(
+        decoration: BoxDecoration(
+          color: palette.surfaceHigh,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        alignment: Alignment.center,
+        child: child,
       ),
-      alignment: Alignment.center,
-      child: child,
+    );
+  }
+}
+
+class _ImageGalleryDialog extends StatefulWidget {
+  const _ImageGalleryDialog({
+    required this.imageRefs,
+    required this.initialIndex,
+    required this.assetRepository,
+    required this.accent,
+    required this.palette,
+  });
+
+  final List<_ImageRef> imageRefs;
+  final int initialIndex;
+  final AssetRepository assetRepository;
+  final Color accent;
+  final OrgPalette palette;
+
+  @override
+  State<_ImageGalleryDialog> createState() => _ImageGalleryDialogState();
+}
+
+class _ImageGalleryDialogState extends State<_ImageGalleryDialog> {
+  late final PageController _pageController;
+  late int _currentIndex;
+  final Map<int, Future<Uint8List>> _cache = <int, Future<Uint8List>>{};
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialIndex.clamp(0, widget.imageRefs.length - 1);
+    _pageController = PageController(initialPage: _currentIndex);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  Future<Uint8List> _bytesFor(int index) {
+    return _cache.putIfAbsent(
+      index,
+      () => widget.assetRepository.readAssetBytes(
+        widget.imageRefs[index].path,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = widget.palette;
+    final total = widget.imageRefs.length;
+    final ref = widget.imageRefs[_currentIndex];
+    return Dialog.fullscreen(
+      backgroundColor: palette.bg,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: PageView.builder(
+              controller: _pageController,
+              itemCount: total,
+              physics: const BouncingScrollPhysics(),
+              onPageChanged: (index) => setState(() => _currentIndex = index),
+              itemBuilder: (context, index) {
+                return FutureBuilder<Uint8List>(
+                  future: _bytesFor(index),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState != ConnectionState.done) {
+                      return Center(
+                        child: SizedBox(
+                          width: 28,
+                          height: 28,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: widget.accent,
+                          ),
+                        ),
+                      );
+                    }
+                    if (snapshot.hasError || !snapshot.hasData) {
+                      return Center(
+                        child: Icon(
+                          Icons.broken_image_outlined,
+                          size: 64,
+                          color: palette.danger,
+                        ),
+                      );
+                    }
+                    return InteractiveViewer(
+                      minScale: 0.7,
+                      maxScale: 5,
+                      child: Center(
+                        child: Image.memory(
+                          snapshot.data!,
+                          fit: BoxFit.contain,
+                          gaplessPlayback: true,
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+          PositionedDirectional(
+            top: MediaQuery.paddingOf(context).top + 10,
+            start: 12,
+            child: OrgIconButton(
+              icon: Icons.close_rounded,
+              onPressed: () => Navigator.of(context).pop(),
+              tooltip: 'Close',
+              size: 40,
+            ),
+          ),
+          if (total > 1)
+            PositionedDirectional(
+              top: MediaQuery.paddingOf(context).top + 16,
+              end: 16,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: palette.surface.withAlpha(220),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: palette.border),
+                ),
+                child: Text(
+                  '${_currentIndex + 1} / $total',
+                  style: TextStyle(
+                    color: palette.text,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 12.5,
+                  ),
+                ),
+              ),
+            ),
+          PositionedDirectional(
+            bottom: MediaQuery.paddingOf(context).bottom + 22,
+            start: 24,
+            end: 24,
+            child: IgnorePointer(
+              child: Text(
+                ref.label,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: palette.textSecondary,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                  letterSpacing: 0.04,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

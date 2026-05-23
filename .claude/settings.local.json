@@ -11,7 +11,8 @@
       "Bash(git commit *)",
       "Bash(git *)",
       "Bash(flutter64)",
-      "Bash(flutter build *)"
+      "Bash(flutter build *)",
+      "Bash(dart format *)"
     ]
   }
 }

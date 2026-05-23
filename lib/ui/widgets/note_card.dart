@@ -81,104 +81,81 @@ class _NoteCardState extends State<NoteCard> {
             horizontal: compact ? 12 : 14,
             vertical: compact ? 10 : 12,
           ),
-          child: Stack(
-            clipBehavior: Clip.none,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Positioned(
-                right: -60,
-                top: -80,
-                child: IgnorePointer(
-                  child: Container(
-                    width: 200,
-                    height: 200,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: RadialGradient(
-                        colors: [soft, soft.withAlpha(0)],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              Row(
                 children: [
-                  Row(
-                    children: [
-                      _TemplateBadge(
-                        name: widget.template?.name ?? 'No template',
-                        accent: accent,
-                        soft: soft,
-                      ),
-                      const Spacer(),
-                      _ActionIcon(
-                        icon: widget.note.isPinned
-                            ? Icons.push_pin_rounded
-                            : Icons.push_pin_outlined,
-                        active: widget.note.isPinned,
-                        accent: accent,
-                        muted: palette.textTertiary,
-                        onTap: widget.onTogglePin,
-                      ),
-                      const SizedBox(width: 2),
-                      _ActionIcon(
-                        icon: widget.note.isFavorite
-                            ? Icons.star_rounded
-                            : Icons.star_outline_rounded,
-                        active: widget.note.isFavorite,
-                        accent: palette.accent,
-                        muted: palette.textTertiary,
-                        onTap: widget.onToggleFavorite,
-                      ),
-                    ],
+                  _TemplateBadge(
+                    name: widget.template?.name ?? 'No template',
+                    accent: accent,
+                    soft: soft,
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    widget.note.title.isEmpty
-                        ? 'Untitled note'
-                        : widget.note.title,
-                    maxLines: compact ? 1 : 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: palette.text,
-                      height: 1.25,
-                    ),
+                  const Spacer(),
+                  _ActionIcon(
+                    icon: widget.note.isPinned
+                        ? Icons.push_pin_rounded
+                        : Icons.push_pin_outlined,
+                    active: widget.note.isPinned,
+                    accent: accent,
+                    muted: palette.textTertiary,
+                    onTap: widget.onTogglePin,
                   ),
-                  const SizedBox(height: 6),
-                  Wrap(
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    spacing: 8,
-                    runSpacing: 6,
-                    children: [
-                      _CategoryPill(
-                        category: widget.category,
-                        accent: accent,
-                        soft: soft,
-                      ),
-                      if (recordCount > 1)
-                        _RecordBadge(count: recordCount, palette: palette),
-                      Text(
-                        formatRelativeTime(widget.note.updatedAt),
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: palette.textTertiary,
-                          fontSize: 11.5,
-                        ),
-                      ),
-                    ],
+                  const SizedBox(width: 2),
+                  _ActionIcon(
+                    icon: widget.note.isFavorite
+                        ? Icons.star_rounded
+                        : Icons.star_outline_rounded,
+                    active: widget.note.isFavorite,
+                    accent: palette.accent,
+                    muted: palette.textTertiary,
+                    onTap: widget.onToggleFavorite,
                   ),
-                  if (widget.note.tags.isNotEmpty) ...[
-                    const SizedBox(height: 7),
-                    Wrap(
-                      spacing: 4,
-                      runSpacing: 4,
-                      children: [
-                        for (final tag in widget.note.tags)
-                          _TagChip(label: tag, palette: palette),
-                      ],
-                    ),
-                  ],
                 ],
               ),
+              const SizedBox(height: 4),
+              Text(
+                widget.note.title.isEmpty ? 'Untitled note' : widget.note.title,
+                maxLines: compact ? 1 : 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  color: palette.text,
+                  height: 1.25,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 8,
+                runSpacing: 6,
+                children: [
+                  _CategoryPill(
+                    category: widget.category,
+                    accent: accent,
+                    soft: soft,
+                  ),
+                  if (recordCount > 1)
+                    _RecordBadge(count: recordCount, palette: palette),
+                  Text(
+                    formatRelativeTime(widget.note.updatedAt),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: palette.textTertiary,
+                      fontSize: 11.5,
+                    ),
+                  ),
+                ],
+              ),
+              if (widget.note.tags.isNotEmpty) ...[
+                const SizedBox(height: 7),
+                Wrap(
+                  spacing: 4,
+                  runSpacing: 4,
+                  children: [
+                    for (final tag in widget.note.tags)
+                      _TagChip(label: tag, palette: palette),
+                  ],
+                ),
+              ],
             ],
           ),
         ),
