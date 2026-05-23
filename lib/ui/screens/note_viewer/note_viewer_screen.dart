@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../domain/models/models.dart';
 import '../../../domain/repositories/repositories.dart';
+import '../../../domain/util/image_field_values.dart';
 import '../../state/app_providers.dart';
 import '../../state/library_provider.dart';
 import '../../theme/color_tokens.dart';
@@ -297,8 +298,14 @@ class _ViewerBodyState extends ConsumerState<_ViewerBody> {
     final density = OrgDensity.of(context);
     final compact = density == OrgDensityLevel.compact;
     final horizontalPad = compact ? 12.0 : 18.0;
+    final layout = widget.template?.layout ?? TemplateLayout.cards;
 
-    final fieldsList = _buildRecordWidgets();
+    final hasRecords = widget.note.records.isNotEmpty;
+    final hasBody = widget.note.body.trim().isNotEmpty;
+    final fieldsList =
+        (layout == TemplateLayout.cards && hasRecords)
+            ? _buildRecordWidgets()
+            : const <Widget>[];
 
     return Scaffold(
       backgroundColor: palette.bg,
@@ -320,7 +327,7 @@ class _ViewerBodyState extends ConsumerState<_ViewerBody> {
               onMore: () => _showMoreMenu(context),
             ),
           ),
-          if (fieldsList.isEmpty && widget.note.body.trim().isEmpty)
+          if (!hasRecords && !hasBody)
             SliverFillRemaining(
               hasScrollBody: false,
               child: OrgEmptyState(
@@ -332,20 +339,9 @@ class _ViewerBodyState extends ConsumerState<_ViewerBody> {
               ),
             )
           else ...[
-            SliverPadding(
-              padding: EdgeInsetsDirectional.fromSTEB(
-                horizontalPad,
-                compact ? 10 : 14,
-                horizontalPad,
-                0,
-              ),
-              sliver: SliverList.separated(
-                itemCount: fieldsList.length,
-                separatorBuilder: (_, _) => SizedBox(height: compact ? 10 : 14),
-                itemBuilder: (_, index) => fieldsList[index],
-              ),
-            ),
-            if (widget.note.body.trim().isNotEmpty)
+            if (hasRecords)
+              _recordsSliver(layout, fieldsList, horizontalPad, compact),
+            if (hasBody)
               SliverPadding(
                 padding: EdgeInsetsDirectional.fromSTEB(
                   horizontalPad,
@@ -360,13 +356,65 @@ class _ViewerBodyState extends ConsumerState<_ViewerBody> {
                   ),
                 ),
               ),
-            SliverToBoxAdapter(
-              child: SizedBox(height: compact ? 28 : 36),
-            ),
+            SliverToBoxAdapter(child: SizedBox(height: compact ? 28 : 36)),
           ],
         ],
       ),
     );
+  }
+
+  Widget _recordsSliver(
+    TemplateLayout layout,
+    List<Widget> fieldsList,
+    double horizontalPad,
+    bool compact,
+  ) {
+    final padding = EdgeInsetsDirectional.fromSTEB(
+      horizontalPad,
+      compact ? 10.0 : 14.0,
+      horizontalPad,
+      0,
+    );
+    return switch (layout) {
+      TemplateLayout.grid => SliverPadding(
+        padding: padding,
+        sliver: SliverGrid.count(
+          crossAxisCount: 2,
+          crossAxisSpacing: compact ? 10.0 : 12.0,
+          mainAxisSpacing: compact ? 10.0 : 12.0,
+          childAspectRatio: 0.82,
+          children: [
+            for (var i = 0; i < widget.note.records.length; i++)
+              _GridRecordTile(
+                index: i,
+                record: widget.note.records[i],
+                template: widget.template,
+                accent: widget.accent,
+                accentSoft: widget.accentSoft,
+              ),
+          ],
+        ),
+      ),
+      TemplateLayout.table => SliverPadding(
+        padding: padding,
+        sliver: SliverToBoxAdapter(
+          child: _TableRecordsList(
+            records: widget.note.records,
+            template: widget.template,
+            accent: widget.accent,
+            accentSoft: widget.accentSoft,
+          ),
+        ),
+      ),
+      _ => SliverPadding(
+        padding: padding,
+        sliver: SliverList.separated(
+          itemCount: fieldsList.length,
+          separatorBuilder: (_, _) => SizedBox(height: compact ? 10 : 14),
+          itemBuilder: (_, index) => fieldsList[index],
+        ),
+      ),
+    };
   }
 
   List<Widget> _buildRecordWidgets() {
@@ -388,12 +436,10 @@ class _ViewerBodyState extends ConsumerState<_ViewerBody> {
       final templateFieldByKey = <String, TemplateField>{};
       if (widget.template != null) {
         for (final field in widget.template!.fields) {
-          if (record.values.containsKey(field.label)) {
-            orderedKeys.add(field.label);
-            templateFieldByKey[field.label] = field;
-          } else if (record.values.containsKey(field.id)) {
-            orderedKeys.add(field.id);
-            templateFieldByKey[field.id] = field;
+          final key = _fieldValueKey(record.values, field);
+          if (key != null) {
+            orderedKeys.add(key);
+            templateFieldByKey[key] = field;
           }
         }
       }
@@ -406,19 +452,19 @@ class _ViewerBodyState extends ConsumerState<_ViewerBody> {
         final value = record.values[key] ?? '';
         final field = templateFieldByKey[key];
         final last = k == orderedKeys.length - 1;
-        if (field?.type == TemplateFieldType.image) {
-          final hasImage = value.trim().isNotEmpty;
-          final index = hasImage ? imageCursor : -1;
-          if (hasImage) imageCursor += 1;
+        final paths = _imagePathsFor(field, key, value);
+        if (paths.isNotEmpty) {
+          final firstIndex = imageCursor;
+          imageCursor += paths.length;
           fields.add(
             _ImageFieldRow(
               label: field?.label ?? key,
-              value: value,
+              paths: paths,
               accent: widget.accent,
               accentSoft: widget.accentSoft,
               assetRepository: requireAssetRepository(),
               imageRefs: imageRefs,
-              imageIndex: index,
+              imageIndex: firstIndex,
             ),
           );
         } else {
@@ -441,22 +487,64 @@ class _ViewerBodyState extends ConsumerState<_ViewerBody> {
 
   List<_ImageRef> _collectImageRefs() {
     final refs = <_ImageRef>[];
-    if (widget.template == null) return refs;
     for (final record in widget.note.records) {
-      for (final field in widget.template!.fields) {
-        if (field.type != TemplateFieldType.image) continue;
-        String? raw;
-        if (record.values.containsKey(field.label)) {
-          raw = record.values[field.label];
-        } else if (record.values.containsKey(field.id)) {
-          raw = record.values[field.id];
+      final orderedKeys = <String>[];
+      final templateFieldByKey = <String, TemplateField>{};
+      if (widget.template != null) {
+        for (final field in widget.template!.fields) {
+          final key = _fieldValueKey(record.values, field);
+          if (key != null) {
+            orderedKeys.add(key);
+            templateFieldByKey[key] = field;
+          }
         }
-        final value = raw?.trim();
-        if (value == null || value.isEmpty) continue;
-        refs.add(_ImageRef(label: field.label, path: value));
+      }
+      for (final key in record.values.keys) {
+        if (!orderedKeys.contains(key)) orderedKeys.add(key);
+      }
+      for (final key in orderedKeys) {
+        final value = record.values[key]?.trim() ?? '';
+        if (value.isEmpty) continue;
+        final field = templateFieldByKey[key];
+        final paths = _imagePathsFor(field, key, value);
+        if (paths.isEmpty) continue;
+        for (var index = 0; index < paths.length; index += 1) {
+          final label = field?.label ?? key;
+          refs.add(
+            _ImageRef(
+              label: paths.length == 1 ? label : '$label ${index + 1}',
+              path: paths[index],
+            ),
+          );
+        }
       }
     }
     return refs;
+  }
+
+  String? _fieldValueKey(Map<String, String> values, TemplateField field) {
+    final normalizedLabel = _normalizedFieldKey(field.label);
+    final normalizedId = _normalizedFieldKey(field.id);
+    for (final key in values.keys) {
+      final normalizedKey = _normalizedFieldKey(key);
+      if (key == field.label ||
+          key == field.id ||
+          normalizedKey == normalizedLabel ||
+          normalizedKey == normalizedId) {
+        return key;
+      }
+    }
+    return null;
+  }
+
+  List<String> _imagePathsFor(TemplateField? field, String key, String value) {
+    if (field?.type == TemplateFieldType.image) {
+      return parseImageFieldValue(value);
+    }
+    final paths = parseImageFieldValue(value);
+    if (paths.isEmpty) return const <String>[];
+    if (paths.every(looksLikeImageAssetPath)) return paths;
+    return const <String>[];
   }
 
   Widget _fieldRow(
@@ -589,6 +677,16 @@ class _ViewerBodyState extends ConsumerState<_ViewerBody> {
 }
 
 enum _ViewerMenu { editTemplate, rawSource, delete }
+
+String _normalizedFieldKey(String value) {
+  return value
+      .replaceAll('*', '')
+      .replaceAll('-', ' ')
+      .replaceAll('_', ' ')
+      .trim()
+      .toLowerCase()
+      .replaceAll(RegExp(r'\s+'), ' ');
+}
 
 class _ViewerHeader extends StatelessWidget {
   const _ViewerHeader({
@@ -951,7 +1049,7 @@ class _ImageRef {
 class _ImageFieldRow extends StatefulWidget {
   const _ImageFieldRow({
     required this.label,
-    required this.value,
+    required this.paths,
     required this.accent,
     required this.accentSoft,
     required this.assetRepository,
@@ -960,7 +1058,7 @@ class _ImageFieldRow extends StatefulWidget {
   });
 
   final String label;
-  final String value;
+  final List<String> paths;
   final Color accent;
   final Color accentSoft;
   final AssetRepository assetRepository;
@@ -972,22 +1070,21 @@ class _ImageFieldRow extends StatefulWidget {
 }
 
 class _ImageFieldRowState extends State<_ImageFieldRow> {
-  String? _path;
-  Future<Uint8List>? _future;
+  final Map<String, Future<Uint8List>> _futures = <String, Future<Uint8List>>{};
 
   Future<Uint8List>? _futureFor(String path) {
     if (path.isEmpty) return null;
-    if (_path != path) {
-      _path = path;
-      _future = widget.assetRepository.readAssetBytes(path);
-    }
-    return _future;
+    return _futures.putIfAbsent(
+      path,
+      () => widget.assetRepository.readAssetBytes(path),
+    );
   }
 
   Future<void> _copyPath(BuildContext context) async {
-    final path = widget.value.trim();
-    if (path.isEmpty) return;
-    await Clipboard.setData(ClipboardData(text: path));
+    if (widget.paths.isEmpty) return;
+    await Clipboard.setData(
+      ClipboardData(text: encodeImageFieldValue(widget.paths)),
+    );
     if (!context.mounted) return;
     showOrgToast(
       context,
@@ -997,29 +1094,9 @@ class _ImageFieldRowState extends State<_ImageFieldRow> {
     );
   }
 
-  void _openPreview(BuildContext context) {
-    if (widget.imageIndex < 0 || widget.imageRefs.isEmpty) return;
-    final palette = OrgPaletteScope.of(context);
-    showDialog<void>(
-      context: context,
-      barrierColor: Colors.black87,
-      builder: (dialogContext) {
-        return _ImageGalleryDialog(
-          imageRefs: widget.imageRefs,
-          initialIndex: widget.imageIndex,
-          assetRepository: widget.assetRepository,
-          accent: widget.accent,
-          palette: palette,
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final palette = OrgPaletteScope.of(context);
-    final path = widget.value.trim();
-    final future = _futureFor(path);
     return Padding(
       padding: const EdgeInsetsDirectional.symmetric(
         horizontal: 4,
@@ -1055,12 +1132,12 @@ class _ImageFieldRowState extends State<_ImageFieldRow> {
                     width: 30,
                     height: 30,
                     decoration: BoxDecoration(
-                      color: path.isEmpty
+                      color: widget.paths.isEmpty
                           ? Colors.transparent
                           : widget.accentSoft,
                       borderRadius: BorderRadius.circular(9),
                       border: Border.all(
-                        color: path.isEmpty
+                        color: widget.paths.isEmpty
                             ? palette.border
                             : Colors.transparent,
                       ),
@@ -1068,7 +1145,7 @@ class _ImageFieldRowState extends State<_ImageFieldRow> {
                     child: Icon(
                       Icons.copy_rounded,
                       size: 14,
-                      color: path.isEmpty
+                      color: widget.paths.isEmpty
                           ? palette.textTertiary
                           : widget.accent,
                     ),
@@ -1077,27 +1154,52 @@ class _ImageFieldRowState extends State<_ImageFieldRow> {
               ],
             ),
             const SizedBox(height: 8),
-            _ViewerImageThumb(
-              future: future,
-              palette: palette,
-              accent: widget.accent,
-              onOpen: () => _openPreview(context),
-            ),
+            for (var index = 0; index < widget.paths.length; index += 1) ...[
+              if (index > 0) const SizedBox(height: 8),
+              _ViewerImageThumb(
+                openKey: ValueKey('viewer-image-${widget.paths[index]}'),
+                future: _futureFor(widget.paths[index]),
+                palette: palette,
+                accent: widget.accent,
+                onOpen: () => _openPreviewAt(context, index),
+              ),
+            ],
           ],
         ),
       ),
+    );
+  }
+
+  void _openPreviewAt(BuildContext context, int offset) {
+    final target = widget.imageIndex + offset;
+    if (target < 0 || target >= widget.imageRefs.length) return;
+    final palette = OrgPaletteScope.of(context);
+    showDialog<void>(
+      context: context,
+      barrierColor: Colors.black87,
+      builder: (dialogContext) {
+        return _ImageGalleryDialog(
+          imageRefs: widget.imageRefs,
+          initialIndex: target,
+          assetRepository: widget.assetRepository,
+          accent: widget.accent,
+          palette: palette,
+        );
+      },
     );
   }
 }
 
 class _ViewerImageThumb extends StatelessWidget {
   const _ViewerImageThumb({
+    required this.openKey,
     required this.future,
     required this.palette,
     required this.accent,
     required this.onOpen,
   });
 
+  final Key openKey;
   final Future<Uint8List>? future;
   final OrgPalette palette;
   final Color accent;
@@ -1140,6 +1242,7 @@ class _ViewerImageThumb extends StatelessWidget {
         }
         final bytes = snapshot.data!;
         return GestureDetector(
+          key: openKey,
           onTap: onOpen,
           child: ClipRRect(
             borderRadius: BorderRadius.circular(12),
@@ -1224,9 +1327,7 @@ class _ImageGalleryDialogState extends State<_ImageGalleryDialog> {
   Future<Uint8List> _bytesFor(int index) {
     return _cache.putIfAbsent(
       index,
-      () => widget.assetRepository.readAssetBytes(
-        widget.imageRefs[index].path,
-      ),
+      () => widget.assetRepository.readAssetBytes(widget.imageRefs[index].path),
     );
   }
 
@@ -1335,6 +1436,267 @@ class _ImageGalleryDialogState extends State<_ImageGalleryDialog> {
                   letterSpacing: 0.04,
                 ),
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Grid layout tile
+// ---------------------------------------------------------------------------
+
+class _GridRecordTile extends StatelessWidget {
+  const _GridRecordTile({
+    required this.index,
+    required this.record,
+    required this.template,
+    required this.accent,
+    required this.accentSoft,
+  });
+
+  final int index;
+  final NoteRecord record;
+  final Template? template;
+  final Color accent;
+  final Color accentSoft;
+
+  String _fieldLabel(String key) {
+    if (template == null) return key;
+    for (final f in template!.fields) {
+      if (f.id == key || f.label == key) return f.label;
+    }
+    return key;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = OrgPaletteScope.of(context);
+    final label = record.label.isEmpty ? 'Record ${index + 1}' : record.label;
+    final filled =
+        record.values.values.where((v) => v.trim().isNotEmpty).length;
+
+    final previews = <(String, String)>[];
+    for (final e in record.values.entries) {
+      if (e.value.trim().isEmpty) continue;
+      if (previews.length >= 3) break;
+      previews.add((_fieldLabel(e.key), e.value));
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: palette.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: palette.border),
+      ),
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                constraints: const BoxConstraints(minWidth: 22, minHeight: 22),
+                padding: const EdgeInsetsDirectional.symmetric(horizontal: 6),
+                decoration: BoxDecoration(
+                  color: accentSoft,
+                  borderRadius: BorderRadius.circular(7),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  '#${index + 1}',
+                  style: TextStyle(
+                    fontFamily: 'JetBrainsMono',
+                    color: accent,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              const Spacer(),
+              Text(
+                '$filled field${filled == 1 ? '' : 's'}',
+                style: TextStyle(
+                  color: palette.textTertiary,
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            label,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: palette.text,
+              fontWeight: FontWeight.w700,
+              fontSize: 13.5,
+              height: 1.2,
+            ),
+          ),
+          if (previews.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            for (final p in previews.take(2))
+              Padding(
+                padding: const EdgeInsets.only(bottom: 3),
+                child: Text(
+                  '${p.$1}: ${p.$2}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: palette.textTertiary,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Table layout
+// ---------------------------------------------------------------------------
+
+class _TableRecordsList extends StatelessWidget {
+  const _TableRecordsList({
+    required this.records,
+    required this.template,
+    required this.accent,
+    required this.accentSoft,
+  });
+
+  final List<NoteRecord> records;
+  final Template? template;
+  final Color accent;
+  final Color accentSoft;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = OrgPaletteScope.of(context);
+    return Container(
+      decoration: BoxDecoration(
+        color: palette.surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: palette.border),
+      ),
+      child: Column(
+        children: [
+          for (var i = 0; i < records.length; i++) ...[
+            if (i > 0)
+              Divider(
+                height: 1,
+                color: palette.border,
+                indent: 16,
+                endIndent: 16,
+              ),
+            _TableRow(
+              index: i,
+              record: records[i],
+              template: template,
+              accent: accent,
+              accentSoft: accentSoft,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _TableRow extends StatelessWidget {
+  const _TableRow({
+    required this.index,
+    required this.record,
+    required this.template,
+    required this.accent,
+    required this.accentSoft,
+  });
+
+  final int index;
+  final NoteRecord record;
+  final Template? template;
+  final Color accent;
+  final Color accentSoft;
+
+  String _fieldLabel(String key) {
+    if (template == null) return key;
+    for (final f in template!.fields) {
+      if (f.id == key || f.label == key) return f.label;
+    }
+    return key;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = OrgPaletteScope.of(context);
+    final label = record.label.isEmpty ? 'Record ${index + 1}' : record.label;
+
+    final summary = <String>[];
+    for (final e in record.values.entries) {
+      if (e.value.trim().isEmpty) continue;
+      if (summary.length >= 4) break;
+      summary.add('${_fieldLabel(e.key)}: ${e.value}');
+    }
+
+    return Padding(
+      padding: const EdgeInsetsDirectional.fromSTEB(12, 12, 12, 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            constraints: const BoxConstraints(minWidth: 22, minHeight: 22),
+            padding: const EdgeInsetsDirectional.symmetric(horizontal: 6),
+            decoration: BoxDecoration(
+              color: accentSoft,
+              borderRadius: BorderRadius.circular(7),
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              '#${index + 1}',
+              style: TextStyle(
+                fontFamily: 'JetBrainsMono',
+                color: accent,
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: palette.text,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13.5,
+                  ),
+                ),
+                if (summary.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    summary.join(' · '),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: palette.textTertiary,
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w500,
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
         ],
