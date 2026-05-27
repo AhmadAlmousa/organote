@@ -11,6 +11,7 @@ import '../../domain/models/models.dart';
 import '../../domain/repositories/repositories.dart';
 import '../storage/file_store.dart';
 import 'google_drive_remote_file_provider.dart';
+import 'google_sign_in_web_config.dart';
 import 'remote_file_provider.dart';
 import 'sync_ledger_store.dart';
 import 'sync_models.dart';
@@ -123,32 +124,56 @@ class GoogleDriveSyncRepository implements SyncRepository {
       const SyncStatus(phase: SyncPhase.signingIn, message: 'Signing in'),
     );
     try {
-      await _initializeGoogleSignIn();
-      if (!_googleSignIn.supportsAuthenticate()) {
-        throw UnsupportedError(
-          'Google Drive sync sign-in on this platform needs the Google-rendered sign-in button.',
-        );
+      if (kIsWeb) {
+        await _signInGoogleDriveWeb();
+      } else {
+        await _signInGoogleDriveInteractive();
       }
-      final account = await _googleSignIn.authenticate(scopeHint: scopes);
-      final authorization =
-          await account.authorizationClient.authorizationForScopes(scopes) ??
-          await account.authorizationClient.authorizeScopes(scopes);
-      _authClient = authorization.authClient(scopes: scopes);
-      _driveApi = drive.DriveApi(_authClient!);
-      _remoteProvider ??= GoogleDriveRemoteFileProvider(_driveApi!);
-      _statusController.add(
-        SyncStatus(
-          phase: SyncPhase.idle,
-          signedIn: true,
-          message: 'Google Drive connected',
-        ),
-      );
     } catch (error) {
       _statusController.add(
         SyncStatus(phase: SyncPhase.error, message: _syncErrorMessage(error)),
       );
       rethrow;
     }
+  }
+
+  Future<void> _signInGoogleDriveInteractive() async {
+    await _initializeGoogleSignIn();
+    if (!_googleSignIn.supportsAuthenticate()) {
+      throw UnsupportedError(
+        'Google Drive sync sign-in on this platform needs platform-provided sign-in UI.',
+      );
+    }
+    final account = await _googleSignIn.authenticate(scopeHint: scopes);
+    final authorization =
+        await account.authorizationClient.authorizationForScopes(scopes) ??
+        await account.authorizationClient.authorizeScopes(scopes);
+    _connectWithAuthorization(authorization);
+  }
+
+  Future<void> _signInGoogleDriveWeb() async {
+    await _initializeGoogleSignIn();
+    final authorization =
+        await _googleSignIn.authorizationClient.authorizationForScopes(
+          scopes,
+        ) ??
+        await _googleSignIn.authorizationClient.authorizeScopes(scopes);
+    _connectWithAuthorization(authorization);
+  }
+
+  void _connectWithAuthorization(
+    GoogleSignInClientAuthorization authorization,
+  ) {
+    _authClient = authorization.authClient(scopes: scopes);
+    _driveApi = drive.DriveApi(_authClient!);
+    _remoteProvider ??= GoogleDriveRemoteFileProvider(_driveApi!);
+    _statusController.add(
+      SyncStatus(
+        phase: SyncPhase.idle,
+        signedIn: true,
+        message: 'Google Drive connected',
+      ),
+    );
   }
 
   @override
@@ -244,6 +269,19 @@ class GoogleDriveSyncRepository implements SyncRepository {
         ? _clientId
         : null;
     final serverClientId = kIsWeb ? null : _serverClientId ?? _clientId;
+    final webClientIdFromMeta = kIsWeb
+        ? googleSignInWebClientIdFromMeta()
+        : null;
+    if (kIsWeb && clientId == null && webClientIdFromMeta == null) {
+      throw const GoogleSignInException(
+        code: GoogleSignInExceptionCode.clientConfigurationError,
+        description:
+            'Web Google Sign-In needs a Web OAuth client ID. '
+            'Set <meta name="google-signin-client_id" content="<WEB_CLIENT_ID>"> '
+            'in web/index.html or build with '
+            '--dart-define=GOOGLE_SIGN_IN_WEB_CLIENT_ID=<WEB_CLIENT_ID>.',
+      );
+    }
     if (!kIsWeb &&
         defaultTargetPlatform == TargetPlatform.android &&
         serverClientId == null) {

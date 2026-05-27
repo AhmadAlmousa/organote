@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -14,7 +15,7 @@ import 'ui/state/app_providers.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await dotenv.load(fileName: '.env', isOptional: true);
+  await _loadEnvironment();
   await configureDependencies();
   final prefs = await SharedPreferences.getInstance();
   final errorLogService = ErrorLogService(
@@ -38,6 +39,14 @@ Future<void> main() async {
       unawaited(errorLogService.recordError(error, stackTrace, source: 'zone'));
     },
   );
+}
+
+Future<void> _loadEnvironment() async {
+  if (kIsWeb) {
+    dotenv.loadFromString(isOptional: true);
+    return;
+  }
+  await dotenv.load(fileName: '.env', isOptional: true);
 }
 
 void _installErrorLogging(ErrorLogService errorLogService) {

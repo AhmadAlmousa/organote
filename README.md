@@ -106,6 +106,16 @@ For a normal browser test of the release web bundle:
 python3 -m http.server 4301 -d build/web
 ```
 
+If you are testing Google Drive sync in the browser, first add your Web OAuth
+client ID to `web/index.html`:
+
+```html
+<meta name="google-signin-client_id" content="<WEB_CLIENT_ID>">
+```
+
+Flutter web does not load `.env` at runtime; deployment servers and proxies
+commonly block dotfiles.
+
 Then open:
 
 ```text
@@ -154,7 +164,15 @@ https://www.googleapis.com/auth/drive.file
 
 6. Create an Android OAuth client for the app package name.
 7. Create a Web application OAuth client in the same project.
-8. Add that Web application OAuth **Client ID** to `.env`:
+8. Add that Web application OAuth **Client ID** to `web/index.html` for
+   browser Drive sync:
+
+```html
+<meta name="google-signin-client_id" content="<WEB_CLIENT_ID>">
+```
+
+9. Add that same Web application OAuth **Client ID** to `.env` for native
+   Android Google Sign-In:
 
 ```env
 GOOGLE_SIGN_IN_WEB_CLIENT_ID=<WEB_CLIENT_ID>
@@ -166,12 +184,24 @@ Google Cloud Console labels this value as `Client ID`. The Android
 `google_sign_in` plugin uses that same Web OAuth client ID as its
 `serverClientId`.
 
-After `.env` is configured, plain run and build commands will read it:
+After `.env` is configured, native run and build commands will read it:
 
 ```sh
 /home/ahmad/flutter/bin/flutter run
 /home/ahmad/flutter/bin/flutter build apk
 ```
+
+The Web OAuth client must include every browser origin you will use under
+**Authorized JavaScript origins**, for example:
+
+```text
+https://dev2.tnl.almou.sa
+http://localhost:8080
+```
+
+Web builds can also accept
+`--dart-define=GOOGLE_SIGN_IN_WEB_CLIENT_ID=<WEB_CLIENT_ID>`, but the preferred
+web configuration is the Google plugin meta tag.
 
 If you use a separate server client ID, set it too:
 
@@ -181,12 +211,12 @@ GOOGLE_SIGN_IN_CLIENT_ID=
 GOOGLE_SIGN_IN_SERVER_CLIENT_ID=<SERVER_CLIENT_ID>
 ```
 
-The `.env` file is bundled into app builds. OAuth client IDs are not private
-keys, but do not commit real project-specific IDs, private keystores,
+The `.env` file is bundled into native app builds. OAuth client IDs are not
+private keys, but do not commit real project-specific IDs, private keystores,
 service-account files, signing passwords, or other secrets.
 
 This Android project does not currently include `google-services.json`, so the
-web OAuth client ID must be available to the app as
+Web OAuth client ID must be available to native Android builds as
 `GOOGLE_SIGN_IN_WEB_CLIENT_ID` or `GOOGLE_SIGN_IN_CLIENT_ID`.
 The Android OAuth client in Google Cloud must also match the package name
 (`com.example.organote` by default) and the SHA-1 for the build you are running.
