@@ -722,9 +722,12 @@ class _RecordDraft {
     required this.labelController,
     required this.fieldControllers,
     this.id,
-    this.extraValues = const <String, String>{},
+    Map<String, String> extraValues = const <String, String>{},
     this.defaultLabel = 'Record 1',
-  });
+  }) : extraFieldControllers = {
+         for (final entry in extraValues.entries)
+           entry.key: TextEditingController(text: entry.value),
+       };
 
   factory _RecordDraft.empty(Template? template, {required int index}) {
     final initialLabel = template == null || template.fields.isEmpty
@@ -789,7 +792,7 @@ class _RecordDraft {
   final String? id;
   final TextEditingController labelController;
   final Map<String, TextEditingController> fieldControllers;
-  Map<String, String> extraValues;
+  final Map<String, TextEditingController> extraFieldControllers;
   String defaultLabel;
 
   NoteRecord toRecord(Template? template, {required int index}) {
@@ -801,7 +804,11 @@ class _RecordDraft {
           values[field.label] = v;
         }
       }
-      values.addAll(extraValues);
+      for (final entry in extraFieldControllers.entries) {
+        if (entry.value.text.trim().isNotEmpty) {
+          values[entry.key] = entry.value.text;
+        }
+      }
     } else {
       for (final entry in fieldControllers.entries) {
         if (entry.value.text.trim().isNotEmpty) {
@@ -834,6 +841,9 @@ class _RecordDraft {
   void dispose() {
     labelController.dispose();
     for (final c in fieldControllers.values) {
+      c.dispose();
+    }
+    for (final c in extraFieldControllers.values) {
       c.dispose();
     }
   }
@@ -1409,6 +1419,14 @@ class _RecordFields extends ConsumerWidget {
           if (i > 0) const SizedBox(height: 12),
           _buildField(ref, template.fields[i]),
         ],
+        if (record.extraFieldControllers.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          _DetachedFieldList(
+            record: record,
+            accent: accent,
+            onTouched: onTouched,
+          ),
+        ],
       ],
     );
   }
@@ -1507,6 +1525,106 @@ class _RecordFields extends ConsumerWidget {
           error: error,
         );
     }
+  }
+}
+
+class _DetachedFieldList extends StatefulWidget {
+  const _DetachedFieldList({
+    required this.record,
+    required this.accent,
+    required this.onTouched,
+  });
+
+  final _RecordDraft record;
+  final Color accent;
+  final VoidCallback onTouched;
+
+  @override
+  State<_DetachedFieldList> createState() => _DetachedFieldListState();
+}
+
+class _DetachedFieldListState extends State<_DetachedFieldList> {
+  @override
+  Widget build(BuildContext context) {
+    final palette = OrgPaletteScope.of(context);
+    final entries = widget.record.extraFieldControllers.entries.toList();
+    if (entries.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: palette.warning, size: 15),
+            const SizedBox(width: 6),
+            Text(
+              'Not in template',
+              style: TextStyle(
+                color: palette.warning,
+                fontWeight: FontWeight.w800,
+                fontSize: 12,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              '${entries.length}',
+              style: TextStyle(
+                color: palette.textTertiary,
+                fontFamily: 'JetBrainsMono',
+                fontWeight: FontWeight.w700,
+                fontSize: 11.5,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        for (var index = 0; index < entries.length; index += 1) ...[
+          if (index > 0) const SizedBox(height: 12),
+          FormFieldHost(
+            label: entries[index].key,
+            accent: palette.warning,
+            focused: true,
+            trailing: IconButton(
+              tooltip: 'Remove preserved field',
+              onPressed: () => _remove(entries[index].key),
+              icon: Icon(
+                Icons.close_rounded,
+                color: palette.textSecondary,
+                size: 16,
+              ),
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints.tightFor(width: 28, height: 28),
+            ),
+            hint: 'Preserved from an older template version',
+            child: TextField(
+              key: Key('detached-field-${entries[index].key}'),
+              controller: entries[index].value,
+              cursorColor: palette.warning,
+              onChanged: (_) => widget.onTouched(),
+              style: TextStyle(
+                color: palette.text,
+                fontWeight: FontWeight.w500,
+              ),
+              decoration: const InputDecoration(
+                isCollapsed: true,
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                contentPadding: EdgeInsets.symmetric(vertical: 4),
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  void _remove(String key) {
+    final controller = widget.record.extraFieldControllers.remove(key);
+    controller?.dispose();
+    widget.onTouched();
+    setState(() {});
   }
 }
 

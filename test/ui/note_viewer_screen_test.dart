@@ -60,6 +60,60 @@ void main() {
     expect(find.byType(Image), findsOneWidget);
   });
 
+  testWidgets('NoteViewerScreen renders normalized multi-image field values', (
+    tester,
+  ) async {
+    final assetRepo = _FakeAssetRepo();
+    const firstPath = 'assets/prod-db/rack-front.png';
+    const secondPath = 'assets/prod-db/rack-back.jpg';
+    final template = Template(
+      id: 'server-login',
+      name: 'Server Login',
+      version: 1,
+      fields: const <TemplateField>[
+        TemplateField(
+          id: 'rack_photo',
+          label: 'Rack Photo',
+          type: TemplateFieldType.image,
+        ),
+      ],
+    );
+    final snapshot = LibrarySnapshot(
+      templates: <Template>[template],
+      notes: <Note>[
+        Note(
+          id: 'prod-db',
+          title: 'Prod DB',
+          templateId: template.id,
+          templateName: template.name,
+          records: const <NoteRecord>[
+            NoteRecord(
+              label: 'Primary',
+              values: <String, String>{'rack photo': '$firstPath, $secondPath'},
+            ),
+          ],
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      _ViewerHarness(snapshot: snapshot, assetRepository: assetRepo),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(assetRepo.readPaths, containsAllInOrder([firstPath, secondPath]));
+    expect(find.text('RACK PHOTO'), findsOneWidget);
+    expect(find.byType(Image), findsNWidgets(2));
+
+    await tester.tap(find.byKey(const ValueKey('viewer-image-$firstPath')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byType(InteractiveViewer), findsOneWidget);
+    expect(find.text('1 / 2'), findsOneWidget);
+  });
+
   testWidgets('NoteViewerScreen opens raw source editor and saves edits', (
     tester,
   ) async {

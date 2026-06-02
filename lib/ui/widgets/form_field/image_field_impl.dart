@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../../domain/models/models.dart';
 import '../../../domain/repositories/repositories.dart';
+import '../../../domain/util/image_field_values.dart';
 import '../../theme/color_tokens.dart';
 import '../org_toast.dart';
 import 'form_field_host.dart';
@@ -35,8 +36,8 @@ class ImageFieldImpl extends StatefulWidget {
 
 class _ImageFieldImplState extends State<ImageFieldImpl> {
   bool _picking = false;
-  String? _previewPath;
-  Future<Uint8List>? _previewFuture;
+  final Map<String, Future<Uint8List>> _previewFutures =
+      <String, Future<Uint8List>>{};
 
   Future<void> _pickImage() async {
     if (_picking) return;
@@ -51,30 +52,40 @@ class _ImageFieldImplState extends State<ImageFieldImpl> {
       final result = await FilePicker.pickFiles(
         type: FileType.image,
         withData: true,
+        allowMultiple: true,
       );
       if (!mounted || result == null || result.files.isEmpty) return;
-      final file = result.files.single;
-      final bytes = file.bytes;
-      if (bytes == null || bytes.isEmpty) {
-        _showFailure('Could not read selected image');
+
+      final importedPaths = <String>[];
+      for (final file in result.files) {
+        final bytes = file.bytes;
+        if (bytes == null || bytes.isEmpty) {
+          continue;
+        }
+        final asset = await widget.assetRepository.importImageForNote(
+          noteId: noteId,
+          originalName: file.name,
+          bytes: bytes,
+          mediaType: _mediaTypeFor(file.name),
+        );
+        importedPaths.add(asset.relativePath);
+      }
+      if (!mounted) return;
+      if (importedPaths.isEmpty) {
+        _showFailure('Could not read selected images');
         return;
       }
-      final asset = await widget.assetRepository.importImageForNote(
-        noteId: noteId,
-        originalName: file.name,
-        bytes: bytes,
-        mediaType: _mediaTypeFor(file.name),
-      );
-      if (!mounted) return;
-      widget.controller.text = asset.relativePath;
+      final existing = parseImageFieldValue(widget.controller.text);
+      widget.controller.text = encodeImageFieldValue([
+        ...existing,
+        ...importedPaths,
+      ]);
       widget.onChanged();
-      setState(() {
-        _previewPath = null;
-        _previewFuture = null;
-      });
       showOrgToast(
         context,
-        message: 'Image imported',
+        message: importedPaths.length == 1
+            ? 'Image imported'
+            : '${importedPaths.length} images imported',
         icon: Icons.image_rounded,
         background: widget.accent,
       );
@@ -89,10 +100,16 @@ class _ImageFieldImplState extends State<ImageFieldImpl> {
   void _clear() {
     widget.controller.clear();
     widget.onChanged();
-    setState(() {
-      _previewPath = null;
-      _previewFuture = null;
-    });
+    setState(_previewFutures.clear);
+  }
+
+  void _removePath(String path) {
+    final paths = parseImageFieldValue(
+      widget.controller.text,
+    ).where((candidate) => candidate != path).toList();
+    widget.controller.text = encodeImageFieldValue(paths);
+    widget.onChanged();
+    setState(() => _previewFutures.remove(path));
   }
 
   @override
@@ -109,15 +126,16 @@ class _ImageFieldImplState extends State<ImageFieldImpl> {
       child: ValueListenableBuilder<TextEditingValue>(
         valueListenable: widget.controller,
         builder: (context, value, _) {
-          final path = value.text.trim();
+          final paths = parseImageFieldValue(value.text);
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _ImagePreview(
-                path: path,
-                future: _futureFor(path),
+                paths: paths,
+                futureFor: _futureFor,
                 palette: palette,
                 accent: accent,
+                onRemove: _removePath,
               ),
               const SizedBox(height: 10),
               Wrap(
@@ -154,7 +172,7 @@ class _ImageFieldImplState extends State<ImageFieldImpl> {
                       ),
                     ),
                   ),
-                  if (path.isNotEmpty)
+                  if (paths.isNotEmpty)
                     TextButton.icon(
                       onPressed: _clear,
                       style: TextButton.styleFrom(
@@ -173,10 +191,12 @@ class _ImageFieldImplState extends State<ImageFieldImpl> {
                     ),
                 ],
               ),
-              if (path.isNotEmpty) ...[
+              if (paths.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 Text(
-                  path,
+                  paths.length == 1
+                      ? paths.single
+                      : '${paths.length} images selected',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -196,11 +216,10 @@ class _ImageFieldImplState extends State<ImageFieldImpl> {
 
   Future<Uint8List>? _futureFor(String path) {
     if (path.isEmpty) return null;
-    if (_previewPath != path) {
-      _previewPath = path;
-      _previewFuture = widget.assetRepository.readAssetBytes(path);
-    }
-    return _previewFuture;
+    return _previewFutures.putIfAbsent(
+      path,
+      () => widget.assetRepository.readAssetBytes(path),
+    );
   }
 
   void _showFailure(String message) {
@@ -226,20 +245,66 @@ class _ImageFieldImplState extends State<ImageFieldImpl> {
 
 class _ImagePreview extends StatelessWidget {
   const _ImagePreview({
+    required this.paths,
+    required this.futureFor,
+    required this.palette,
+    required this.accent,
+    required this.onRemove,
+  });
+
+  final List<String> paths;
+  final Future<Uint8List>? Function(String path) futureFor;
+  final OrgPalette palette;
+  final Color accent;
+  final ValueChanged<String> onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    if (paths.isEmpty) {
+      return _PreviewFrame(
+        palette: palette,
+        child: Icon(
+          Icons.image_outlined,
+          color: palette.textTertiary,
+          size: 24,
+        ),
+      );
+    }
+    return Column(
+      children: [
+        for (var index = 0; index < paths.length; index += 1) ...[
+          if (index > 0) const SizedBox(height: 8),
+          _ImagePreviewTile(
+            path: paths[index],
+            future: futureFor(paths[index]),
+            palette: palette,
+            accent: accent,
+            onRemove: () => onRemove(paths[index]),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _ImagePreviewTile extends StatelessWidget {
+  const _ImagePreviewTile({
     required this.path,
     required this.future,
     required this.palette,
     required this.accent,
+    required this.onRemove,
   });
 
   final String path;
   final Future<Uint8List>? future;
   final OrgPalette palette;
   final Color accent;
+  final VoidCallback onRemove;
 
   @override
   Widget build(BuildContext context) {
-    if (path.isEmpty || future == null) {
+    if (future == null) {
       return _PreviewFrame(
         palette: palette,
         child: Icon(
@@ -272,16 +337,41 @@ class _ImagePreview extends StatelessWidget {
             ),
           );
         }
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: AspectRatio(
-            aspectRatio: 16 / 9,
-            child: Image.memory(
-              snapshot.data!,
-              fit: BoxFit.cover,
-              gaplessPlayback: true,
+        return Stack(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: AspectRatio(
+                aspectRatio: 16 / 9,
+                child: Image.memory(
+                  snapshot.data!,
+                  fit: BoxFit.cover,
+                  gaplessPlayback: true,
+                ),
+              ),
             ),
-          ),
+            PositionedDirectional(
+              top: 8,
+              end: 8,
+              child: GestureDetector(
+                onTap: onRemove,
+                child: Container(
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: palette.bg.withAlpha(210),
+                    borderRadius: BorderRadius.circular(9),
+                    border: Border.all(color: palette.border),
+                  ),
+                  child: Icon(
+                    Icons.close_rounded,
+                    color: palette.text,
+                    size: 16,
+                  ),
+                ),
+              ),
+            ),
+          ],
         );
       },
     );

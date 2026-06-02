@@ -25,6 +25,13 @@ String _randomId() {
   return List.generate(12, (_) => chars[rng.nextInt(chars.length)]).join();
 }
 
+String _defaultLabelForType(TemplateFieldType type) {
+  return switch (type) {
+    TemplateFieldType.image => 'Image',
+    _ => 'Untitled',
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Draft model
 // ---------------------------------------------------------------------------
@@ -84,7 +91,7 @@ class _FieldDraft {
 
   TemplateField toField() => TemplateField(
     id: id,
-    label: label.isEmpty ? 'Untitled' : label,
+    label: label.trim().isEmpty ? _defaultLabelForType(type) : label.trim(),
     type: type,
     isRequired: isRequired,
     hint: hint?.isEmpty == true ? null : hint,
@@ -238,7 +245,14 @@ class _TemplateBuilderScreenState extends ConsumerState<TemplateBuilderScreen> {
     final type = await showFieldTypePicker(context);
     if (type == null || !mounted) return;
     setState(() {
-      _fields.add(_FieldDraft(type: type, expanded: true, isNew: true));
+      _fields.add(
+        _FieldDraft(
+          label: type == TemplateFieldType.image ? 'Image' : '',
+          type: type,
+          expanded: true,
+          isNew: true,
+        ),
+      );
     });
   }
 
@@ -1031,7 +1045,11 @@ class _FieldRowHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final palette = OrgPaletteScope.of(context);
-    final label = draft.label.isEmpty ? 'Untitled field' : draft.label;
+    final label = draft.label.isEmpty
+        ? draft.type == TemplateFieldType.image
+              ? 'Image'
+              : 'Untitled field'
+        : draft.label;
 
     return GestureDetector(
       onTap: onToggleExpand,

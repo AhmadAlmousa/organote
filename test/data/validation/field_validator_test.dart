@@ -239,7 +239,21 @@ void main() {
 
       expect(validator.validateField(field, 'assets/foo/bar.png'), isEmpty);
       expect(
+        validator.validateField(
+          field,
+          'assets/foo/bar.png, assets/foo/baz.jpg',
+        ),
+        isEmpty,
+      );
+      expect(
         validator.validateField(field, '../escape.png').single.message,
+        contains('relative asset path'),
+      );
+      expect(
+        validator
+            .validateField(field, 'assets/foo/bar.png, ../escape.png')
+            .single
+            .message,
         contains('relative asset path'),
       );
       expect(
@@ -291,13 +305,23 @@ void main() {
             type: TemplateFieldType.url,
             isRequired: true,
           ),
+          TemplateField(
+            id: 'rack_photo',
+            label: 'Rack Photo',
+            type: TemplateFieldType.image,
+            isRequired: true,
+          ),
         ],
       );
 
-      // 'Name' is keyed by label; 'host' is keyed by id (legacy/rename path).
+      // Label, id, and normalized heading keys are all accepted.
       const record = NoteRecord(
         label: 'Record',
-        values: {'Name': 'Ahmad', 'host': 'https://example.com'},
+        values: {
+          'Name': 'Ahmad',
+          'host': 'https://example.com',
+          'rack photo': 'assets/rack/front.png',
+        },
       );
 
       expect(validator.validateRecord(template, record), isEmpty);

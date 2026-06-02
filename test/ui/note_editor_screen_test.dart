@@ -65,6 +65,63 @@ void main() {
       expect(find.text('ENVIRONMENT'), findsOneWidget);
     });
 
+    testWidgets('highlights and saves fields removed from the template', (
+      tester,
+    ) async {
+      final updatedTemplate = Template(
+        id: 'server-login',
+        name: 'Server Login',
+        version: 2,
+        fields: const <TemplateField>[
+          TemplateField(id: 'host', label: 'Host', type: TemplateFieldType.ip),
+        ],
+      );
+      final fake = _FakeNoteRepo();
+      await tester.pumpWidget(
+        _EditorHarness(
+          snapshot: LibrarySnapshot(
+            templates: <Template>[updatedTemplate],
+            notes: <Note>[
+              Note(
+                id: 'prod-db',
+                title: 'Prod DB',
+                templateId: updatedTemplate.id,
+                templateName: updatedTemplate.name,
+                records: const <NoteRecord>[
+                  NoteRecord(
+                    label: 'Primary',
+                    values: <String, String>{
+                      'Host': '10.0.0.5',
+                      'Legacy Token': 'old-secret',
+                    },
+                  ),
+                ],
+              ),
+            ],
+          ),
+          noteRepo: fake,
+          noteId: 'prod-db',
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('Not in template'), findsOneWidget);
+      expect(find.text('LEGACY TOKEN'), findsOneWidget);
+
+      await tester.enterText(
+        find.byKey(const Key('detached-field-Legacy Token')),
+        'new-secret',
+      );
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pump();
+
+      expect(fake.savedInputs, isNotEmpty);
+      expect(
+        fake.savedInputs.last.records.single.values['Legacy Token'],
+        'new-secret',
+      );
+    });
+
     testWidgets('autosaves once after 2 seconds of typing', (tester) async {
       final fake = _FakeNoteRepo();
       await tester.pumpWidget(
@@ -299,11 +356,13 @@ class _EditorHarness extends StatelessWidget {
     required this.snapshot,
     required this.noteRepo,
     this.templateId,
+    this.noteId,
   });
 
   final LibrarySnapshot snapshot;
   final NoteRepository noteRepo;
   final String? templateId;
+  final String? noteId;
 
   @override
   Widget build(BuildContext context) {
@@ -324,7 +383,7 @@ class _EditorHarness extends StatelessWidget {
           theme: OrgTheme.build(palette),
           home: OrgDensity(
             level: OrgDensityLevel.comfortable,
-            child: NoteEditorScreen(templateId: templateId),
+            child: NoteEditorScreen(noteId: noteId, templateId: templateId),
           ),
         ),
       ),

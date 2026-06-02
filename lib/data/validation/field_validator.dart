@@ -1,4 +1,5 @@
 import '../../domain/models/models.dart';
+import '../../domain/util/image_field_values.dart';
 
 class FieldValidationIssue {
   const FieldValidationIssue({required this.field, required this.message});
@@ -16,10 +17,7 @@ class FieldValidator {
   ) {
     return template.fields
         .expand(
-          (field) => validateField(
-            field,
-            record.values[field.label] ?? record.values[field.id],
-          ),
+          (field) => validateField(field, _fieldValue(record.values, field)),
         )
         .toList();
   }
@@ -104,7 +102,8 @@ class FieldValidator {
           fail('${field.label} does not match the required pattern.');
         }
       case TemplateFieldType.image:
-        if (normalized.contains('..') || normalized.startsWith('/')) {
+        final paths = parseImageFieldValue(normalized);
+        if (paths.any((path) => path.contains('..') || path.startsWith('/'))) {
           fail('${field.label} must reference a relative asset path.');
         }
       case TemplateFieldType.customLabel:
@@ -138,5 +137,22 @@ class FieldValidator {
 
   static bool _looksLikeDate(String value) {
     return RegExp(r'^\d{1,4}[-/]\d{1,2}[-/]\d{1,4}(?:\s*H)?$').hasMatch(value);
+  }
+
+  static String? _fieldValue(Map<String, String> values, TemplateField field) {
+    return values[field.label] ??
+        values[field.id] ??
+        values[_normalizedFieldKey(field.label)] ??
+        values[_normalizedFieldKey(field.id)];
+  }
+
+  static String _normalizedFieldKey(String value) {
+    return value
+        .replaceAll('*', '')
+        .replaceAll('-', ' ')
+        .replaceAll('_', ' ')
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'\s+'), ' ');
   }
 }

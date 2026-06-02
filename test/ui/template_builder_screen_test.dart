@@ -27,6 +27,32 @@ void main() {
     expect(find.text('New template'), findsNothing);
     expect(find.text('Closed server-login'), findsOneWidget);
   });
+
+  testWidgets('new image fields default to Image label', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final repo = _FakeTemplateRepo();
+
+    await tester.pumpWidget(_TemplateBuilderRootHarness(repo: repo));
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Template name'),
+      'Photo Log',
+    );
+    await tester.tap(find.text('Add field'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Image'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Untitled field'), findsNothing);
+
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    expect(repo.savedInput?.fields.single.label, 'Image');
+    expect(repo.savedInput?.fields.single.type, TemplateFieldType.image);
+  });
 }
 
 class _TemplateBuilderRootHarness extends StatefulWidget {
