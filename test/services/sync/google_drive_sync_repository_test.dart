@@ -48,6 +48,32 @@ void main() {
     });
 
     test(
+      'uploads trash and Organote metadata but excludes ledger and diagnostics',
+      () async {
+        final store = MemoryFileStore();
+        await store.initialize();
+        await store.writeText('trash/notes/deleted.md', '# Deleted\n');
+        await store.writeText('.organote/categories.json', '[]');
+        await store.writeText('.organote/compliance_ignores.json', '[]');
+        await store.writeText('.organote/errors.log', 'diagnostic');
+        await store.writeText('.organote/sync_ledger.json', '[]');
+        final remote = _FakeRemoteFileProvider();
+        final repository = GoogleDriveSyncRepository(
+          fileStore: store,
+          remoteFileProvider: remote,
+        );
+
+        await repository.syncNow();
+
+        expect(remote.uploadedPaths, <String>[
+          '.organote/categories.json',
+          '.organote/compliance_ignores.json',
+          'trash/notes/deleted.md',
+        ]);
+      },
+    );
+
+    test(
       'pushes soft-delete when a tracked file has been deleted locally',
       () async {
         final store = MemoryFileStore();

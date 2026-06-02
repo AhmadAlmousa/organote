@@ -170,6 +170,8 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
       case _SplashPhase.needsStorage:
         final unsupported =
             _storageReason == StorageUnavailableReason.unsupportedPlatform;
+        final reconnect =
+            _storageReason == StorageUnavailableReason.permissionDenied;
         return Column(
           key: const ValueKey('needs-storage'),
           children: [
@@ -184,6 +186,8 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
             Text(
               unsupported
                   ? 'Desktop browser required'
+                  : reconnect
+                  ? 'Reconnect your Organote folder'
                   : kIsWeb
                   ? 'Choose a folder for your Organote library'
                   : 'Pick a storage folder',
@@ -222,7 +226,13 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                         ),
                       )
                     : const Icon(Icons.folder_open_rounded, size: 18),
-                label: Text(_choosing ? 'Opening picker...' : 'Choose folder'),
+                label: Text(
+                  _choosing
+                      ? 'Opening picker...'
+                      : reconnect
+                      ? 'Reconnect folder'
+                      : 'Choose folder',
+                ),
               ),
           ],
         );

@@ -54,6 +54,46 @@ Sync status:
 - Sync ledger persistence is implemented at `.organote/sync_ledger.json`.
 - Google Drive upload/download/delete execution is behind `RemoteFileProvider` and implemented by `GoogleDriveRemoteFileProvider` using Drive file app properties for relative paths and soft-delete flags.
 
+Active handoff: Web Google Sign-In cross-origin issue (2026-05-29):
+- User still reports a browser cross-origin / COOP console error during web
+  sign-in, so this is not resolved yet.
+- The first attempted fix was to stop treating web sign-in as one direct
+  `authenticate()` call. The web flow now expects the Google-rendered identity
+  button first, then the app's Drive authorization action for the `drive.file`
+  scope.
+- `google_sign_in_web ^1.1.3` was added. `lib/ui/widgets/google_sign_in_web_button_web.dart`
+  renders `google_sign_in_web/web_only.dart`'s `renderButton`, and
+  `settings_screen.dart` shows that button above the Drive row on web when the
+  sync status is not signed in.
+- `SyncRepository.prepareGoogleDriveSignIn()` was added and Settings calls it
+  after the first frame on web. This initializes `GoogleSignIn` and subscribes
+  to `authenticationEvents` before the web button is used.
+- `GoogleDriveSyncRepository` now stores the
+  `GoogleSignInAuthenticationEventSignIn.user` in `_webAccount`. On web,
+  `signInGoogleDrive()` requires that account and calls
+  `account.authorizationClient.authorizationForScopes(scopes)` or
+  `authorizeScopes(scopes)` to grant Drive access.
+- The web client ID is read from
+  `<meta name="google-signin-client_id" content="...">` via
+  `google_sign_in_web_config_web.dart`, with placeholder values ignored. The
+  current `web/index.html` contains a concrete Web OAuth client ID.
+- The web canceled-popup error text was changed to point at popup blockers and
+  OAuth web origins instead of Android SHA-1 setup.
+- `tools/serve_web.py` was added for local/release web testing. It serves the
+  Flutter bundle with `Cross-Origin-Opener-Policy: same-origin-allow-popups`
+  and `Referrer-Policy: strict-origin-when-cross-origin`. `README.md` now says
+  to use this server instead of plain `python3 -m http.server` for Drive sync
+  testing and to verify the tunneled response with
+  `curl -I https://dev2.tnl.almou.sa/`.
+- Suspected remaining frontend/deployment checks: confirm the exact console
+  message and stack, verify the effective headers on the actual browser origin
+  are not stripped or overwritten by the tunnel/reverse proxy, confirm the
+  exact origin is present in Google Cloud Console's Authorized JavaScript
+  origins, and verify the user is clicking the Google-rendered button before
+  the Drive authorization icon.
+- Current tests only cover the repository contract shape and fake sync paths;
+  they do not validate the real browser popup/GIS flow.
+
 Backend test coverage (124 tests, `flutter analyze` clean):
 - Storage helpers: `sanitizeFileName`, `normalizeRelativePath`, `MemoryFileStore` init/ensureStructure idempotency, recursive list/move/delete, and `StorageUnavailableException` before init — `test/services/storage/file_store_test.dart`.
 - Repository round-trips: empty-store startup snapshot, multi-record note round trip through `MarkdownCodec` (Person-1/Person-2 + dual hijri date), `saveRawSource` rewriting on disk and throwing `StateError` for unknown ids — `test/data/repositories/local_organote_repository_test.dart`.
@@ -62,3 +102,69 @@ Backend test coverage (124 tests, `flutter analyze` clean):
 - Existing coverage carries over: markdown codec round trips, field validators per type, compliance scans (drift/missing/orphan/rename), sync reconciler 6-state matrix, Google Drive sync repository end-to-end against fake remote.
 
 Before changing any expected model shape, write the request in `front_to_backend.md`. Backend will check that file frequently and respond here.
+
+---
+
+## Frontend assignments for sync/storage follow-up (2026-06-02)
+
+User reported web storage re-selection, duplicate web sign-in buttons, Android
+sync configuration failure, and the flattened Google Drive folder layout. Backend
+requests and technical resolution plan are tracked in `front_to_backend.md`.
+
+Frontend-owned items:
+
+1. **Web storage reconnect UX**
+   - Once backend restores persisted File System Access handles, keep the splash
+     flow on the library path when `StorageStatus.isAvailable` is true.
+   - When backend reports a stored handle that needs permission re-grant, show a
+     single gesture-safe "Reconnect folder" action instead of wording that
+     implies the user must pick a new storage directory.
+   - Settings -> Data should continue to show `StorageStatus.rootLabel`, but the
+     action label should distinguish "Change folder" from "Reconnect folder"
+     when backend exposes that state.
+   - Add/adjust widget coverage for the storage gate labels and disabled
+     unsupported-browser path.
+
+2. **Single web Drive connect button**
+   - Remove the visible `GoogleSignInWebButton` from Settings once backend makes
+     `SyncRepository.signInGoogleDrive()` a direct web authorization flow.
+   - Use one primary app control for Drive: "Connect Drive" when disconnected,
+     "Sync now" when connected, plus the existing status pill.
+   - Avoid in-app instructional text that tells the user to click one sign-in
+     button and then another. The flow should be self-contained in the button
+     state and toast/status messaging.
+   - Update `test/ui/settings_screen_test.dart` so web Settings asserts a single
+     Drive connection control is rendered.
+
+3. **Android configuration error messaging**
+   - Keep the visible error compact, but map the Android Google Sign-In provider
+     configuration failure to copy that names package name, SHA-1, and Web OAuth
+     client ID/serverClientId.
+   - Do not surface the raw `[28444] Developer console is not setup correctly`
+     string as the primary message.
+
+4. **Hierarchical Drive mirror status**
+   - After backend changes Drive sync from flattened files to hierarchy mirroring,
+     Settings -> Sync should keep using `SyncStatus` only; no frontend parsing of
+     Drive structure is required.
+   - If backend adds sync progress details, render them as concise status text
+     under the existing Sync section rather than introducing a new maintenance
+     screen.
+
+Frontend should wait for the backend contract changes before deleting
+`lib/ui/widgets/google_sign_in_web_button*.dart`; those files are still needed by
+the current two-step implementation.
+
+### Implementation status (2026-06-02)
+
+The frontend assignments above are implemented in the current worktree:
+
+- Settings now renders one primary Drive action: `Connect Drive` while
+  disconnected, `Sync now` after connection.
+- The rendered Google web sign-in button is no longer used by Settings.
+- Splash and Settings distinguish saved-folder permission re-grants with
+  `Reconnect folder`.
+- Android setup errors are compacted to actionable OAuth setup checks.
+
+The `google_sign_in_web_button*.dart` files still exist but are inactive; they
+can be deleted in a later cleanup once no imports remain.

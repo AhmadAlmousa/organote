@@ -1,5 +1,9 @@
 (function () {
   let rootHandle = null;
+  let rootLoaded = false;
+  const dbName = "organote-file-system";
+  const storeName = "handles";
+  const rootKey = "root";
 
   function normalizePath(path) {
     return String(path || "")
@@ -50,6 +54,90 @@
   async function fileHandle(path, create) {
     const { parent, name } = await parentAndName(path, create);
     return parent.getFileHandle(name, { create });
+  }
+
+  function openDb() {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(dbName, 1);
+      request.onupgradeneeded = () => {
+        request.result.createObjectStore(storeName);
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async function storeRootHandle(handle) {
+    if (!window.indexedDB) {
+      return;
+    }
+    let db = null;
+    try {
+      db = await openDb();
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction(storeName, "readwrite");
+        tx.objectStore(storeName).put(handle, rootKey);
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error);
+      });
+    } catch (_) {
+      // The selected real folder remains usable for this session even if
+      // browser handle persistence is unavailable.
+    } finally {
+      if (db) {
+        db.close();
+      }
+    }
+  }
+
+  async function loadRootHandle() {
+    if (rootLoaded) {
+      return rootHandle;
+    }
+    rootLoaded = true;
+    if (!window.indexedDB) {
+      return null;
+    }
+    try {
+      const db = await openDb();
+      try {
+        rootHandle = await new Promise((resolve, reject) => {
+          const tx = db.transaction(storeName, "readonly");
+          const request = tx.objectStore(storeName).get(rootKey);
+          request.onsuccess = () => resolve(request.result || null);
+          request.onerror = () => reject(request.error);
+        });
+        return rootHandle;
+      } finally {
+        db.close();
+      }
+    } catch (_) {
+      rootHandle = null;
+      return null;
+    }
+  }
+
+  async function rootPermission() {
+    const handle = await loadRootHandle();
+    if (!handle) {
+      return "missing";
+    }
+    if (!handle.queryPermission) {
+      return "granted";
+    }
+    return handle.queryPermission({ mode: "readwrite" });
+  }
+
+  async function requestRootPermission() {
+    const handle = await loadRootHandle();
+    if (!handle) {
+      return "missing";
+    }
+    if (!handle.requestPermission) {
+      return "granted";
+    }
+    return handle.requestPermission({ mode: "readwrite" });
   }
 
   async function readBytes(path) {
@@ -115,8 +203,16 @@
     rootName() {
       return rootHandle ? rootHandle.name : "";
     },
+    async restoreRoot() {
+      const handle = await loadRootHandle();
+      return handle ? handle.name : "";
+    },
+    rootPermission,
+    requestRootPermission,
     async chooseRoot() {
       rootHandle = await window.showDirectoryPicker({ mode: "readwrite" });
+      rootLoaded = true;
+      await storeRootHandle(rootHandle);
       return rootHandle.name;
     },
     async ensureStructure(directories) {

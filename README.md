@@ -103,8 +103,13 @@ For a normal browser test of the release web bundle:
 
 ```sh
 /home/ahmad/flutter/bin/flutter build web
-python3 -m http.server 4301 -d build/web
+python3 tools/serve_web.py --port 4301 --directory build/web
 ```
+
+Use `tools/serve_web.py` instead of plain `python3 -m http.server` for Google
+Drive sync testing. It adds `Cross-Origin-Opener-Policy:
+same-origin-allow-popups`, which Google Sign-In popup flows require on the app
+HTML response.
 
 If you are testing Google Drive sync in the browser, first add your Web OAuth
 client ID to `web/index.html`:
@@ -115,6 +120,9 @@ client ID to `web/index.html`:
 
 Flutter web does not load `.env` at runtime; deployment servers and proxies
 commonly block dotfiles.
+
+In the web settings screen, use the Google-rendered sign-in button first, then
+press the Drive authorize button to grant the `drive.file` scope.
 
 Then open:
 
@@ -197,6 +205,20 @@ The Web OAuth client must include every browser origin you will use under
 ```text
 https://dev2.tnl.almou.sa
 http://localhost:8080
+```
+
+If the browser reports a closed Google authorization popup, verify that the
+origin is listed exactly and that the browser or reverse proxy is not blocking
+popups from the app page. The public app response must include:
+
+```http
+Cross-Origin-Opener-Policy: same-origin-allow-popups
+```
+
+Check the effective tunneled response with:
+
+```sh
+curl -I https://dev2.tnl.almou.sa/
 ```
 
 Web builds can also accept

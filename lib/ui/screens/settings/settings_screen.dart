@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -12,7 +13,6 @@ import '../../theme/color_tokens.dart';
 import '../../theme/density.dart';
 import '../../theme/motion.dart';
 import '../../theme/theme_controller.dart';
-import '../../widgets/org_icon_button.dart';
 import '../../widgets/org_toast.dart';
 import 'phase9_screens.dart';
 
@@ -368,9 +368,11 @@ String _compactGoogleSignInError(GoogleSignInException error) {
   return switch (error.code) {
     GoogleSignInExceptionCode.clientConfigurationError ||
     GoogleSignInExceptionCode.providerConfigurationError =>
-      'Google Sign-In configuration failed. Check web client ID, package name, and SHA-1.',
+      'Google Sign-In setup failed. Check package name, SHA-1, Drive API, OAuth consent, and web client ID.',
     GoogleSignInExceptionCode.canceled =>
-      'Google sign-in was canceled. If this followed account selection, check Android OAuth setup.',
+      kIsWeb
+          ? 'Google authorization popup was closed. Check popup blockers and OAuth web origins.'
+          : 'Google sign-in was canceled. If this followed account selection, check Android OAuth setup.',
     GoogleSignInExceptionCode.uiUnavailable =>
       'Google sign-in UI is unavailable on this device.',
     GoogleSignInExceptionCode.interrupted => 'Google sign-in was interrupted.',
@@ -587,25 +589,12 @@ class _SyncSection extends StatelessWidget {
       ),
       child: Column(
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: _InfoRow(
-                  icon: status.signedIn
-                      ? Icons.cloud_done_rounded
-                      : Icons.cloud_off_rounded,
-                  label: 'Google Drive',
-                  value: status.signedIn ? 'Connected' : 'Not connected',
-                ),
-              ),
-              const SizedBox(width: 8),
-              OrgIconButton(
-                icon: Icons.login_rounded,
-                tooltip: 'Connect Drive',
-                onPressed: running ? null : onConnect,
-                size: 40,
-              ),
-            ],
+          _InfoRow(
+            icon: status.signedIn
+                ? Icons.cloud_done_rounded
+                : Icons.cloud_off_rounded,
+            label: 'Google Drive',
+            value: status.signedIn ? 'Connected' : 'Not connected',
           ),
           const SizedBox(height: 8),
           _InfoRow(
@@ -637,9 +626,17 @@ class _SyncSection extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           _FullWidthButton(
-            icon: running ? Icons.hourglass_top_rounded : Icons.sync_rounded,
-            label: running ? 'Working' : 'Sync now',
-            onTap: running ? null : onSync,
+            icon: running
+                ? Icons.hourglass_top_rounded
+                : status.signedIn
+                ? Icons.sync_rounded
+                : Icons.login_rounded,
+            label: running
+                ? 'Working'
+                : status.signedIn
+                ? 'Sync now'
+                : 'Connect Drive',
+            onTap: running ? null : (status.signedIn ? onSync : onConnect),
           ),
         ],
       ),
@@ -806,6 +803,10 @@ class _DataSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final storageActionLabel = storage.maybeWhen(
+      data: _storageActionLabel,
+      orElse: () => 'Choose folder',
+    );
     return _SettingsSection(
       icon: Icons.storage_rounded,
       title: 'Data',
@@ -841,7 +842,7 @@ class _DataSection extends StatelessWidget {
             icon: busy
                 ? Icons.hourglass_top_rounded
                 : Icons.folder_open_rounded,
-            label: busy ? 'Working' : 'Choose storage',
+            label: busy ? 'Working' : storageActionLabel,
             onTap: busy ? null : onChooseRoot,
           ),
           const SizedBox(height: 8),
@@ -993,6 +994,17 @@ class _DiagnosticsSection extends StatelessWidget {
       ),
     );
   }
+}
+
+String _storageActionLabel(StorageStatus status) {
+  if (status.isAvailable) {
+    return 'Change folder';
+  }
+  if (status.reason == StorageUnavailableReason.permissionDenied &&
+      status.rootLabel != null) {
+    return 'Reconnect folder';
+  }
+  return 'Choose folder';
 }
 
 class _DangerZoneSection extends StatelessWidget {

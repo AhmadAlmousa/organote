@@ -109,6 +109,7 @@ class GoogleDriveSyncRepository implements SyncRepository {
       StreamController<SyncStatus>.broadcast();
 
   bool _initialized = false;
+  StreamSubscription<GoogleSignInAuthenticationEvent>? _authEventsSubscription;
   google_auth.AuthClient? _authClient;
   drive.DriveApi? _driveApi;
   RemoteFileProvider? _remoteProvider;
@@ -117,6 +118,20 @@ class GoogleDriveSyncRepository implements SyncRepository {
 
   @override
   Stream<SyncStatus> watchSyncStatus() => _statusController.stream;
+
+  @override
+  Future<void> prepareGoogleDriveSignIn() async {
+    if (!kIsWeb) {
+      return;
+    }
+    try {
+      await _initializeGoogleSignIn();
+    } catch (error) {
+      _statusController.add(
+        SyncStatus(phase: SyncPhase.error, message: _syncErrorMessage(error)),
+      );
+    }
+  }
 
   @override
   Future<void> signInGoogleDrive() async {
@@ -296,7 +311,46 @@ class GoogleDriveSyncRepository implements SyncRepository {
       clientId: clientId,
       serverClientId: serverClientId,
     );
+    _authEventsSubscription ??= _googleSignIn.authenticationEvents.listen(
+      _handleAuthenticationEvent,
+      onError: _handleAuthenticationError,
+    );
     _initialized = true;
+  }
+
+  void _handleAuthenticationEvent(GoogleSignInAuthenticationEvent event) {
+    switch (event) {
+      case GoogleSignInAuthenticationEventSignIn(user: final user):
+        if (kIsWeb && _authClient == null) {
+          _statusController.add(
+            SyncStatus(
+              phase: SyncPhase.idle,
+              message: 'Google account selected: ${user.email}',
+            ),
+          );
+        }
+      case GoogleSignInAuthenticationEventSignOut():
+        _authClient = null;
+        _driveApi = null;
+        if (kIsWeb) {
+          _statusController.add(
+            const SyncStatus(
+              phase: SyncPhase.idle,
+              message: 'Google account signed out',
+            ),
+          );
+        }
+    }
+  }
+
+  void _handleAuthenticationError(Object error, StackTrace stackTrace) {
+    if (error is GoogleSignInException &&
+        error.code == GoogleSignInExceptionCode.canceled) {
+      return;
+    }
+    _statusController.add(
+      SyncStatus(phase: SyncPhase.error, message: _syncErrorMessage(error)),
+    );
   }
 
   Future<Map<String, SyncManifestEntry>> _buildLocalManifest() async {
@@ -400,13 +454,14 @@ class GoogleDriveSyncRepository implements SyncRepository {
 
   static bool _isSyncableFile(StoredFile file) {
     final path = file.relativePath;
-    if (path == SyncLedgerStore.ledgerPath || path.startsWith('trash/')) {
+    if (path == SyncLedgerStore.ledgerPath || path == '.organote/errors.log') {
       return false;
     }
     return path.startsWith('templates/') ||
         path.startsWith('notes/') ||
         path.startsWith('assets/') ||
-        path == '.organote/categories.json';
+        path.startsWith('trash/') ||
+        path.startsWith('.organote/');
   }
 
   void dispose() {
@@ -424,6 +479,9 @@ String _syncErrorMessage(Object error) {
   if (raw.contains('serverClientId') || raw.contains('clientConfiguration')) {
     return 'Google Sign-In is missing or rejecting the OAuth client ID.';
   }
+  if (raw.contains('Developer console is not setup correctly')) {
+    return 'Google Sign-In setup failed. Check Android package name, SHA-1, Drive API, OAuth consent screen, and web client ID/serverClientId.';
+  }
   if (raw.length <= 140) {
     return raw;
   }
@@ -439,7 +497,7 @@ String _googleSignInErrorMessage(GoogleSignInException error) {
     GoogleSignInExceptionCode.clientConfigurationError =>
       'Google Sign-In client configuration failed. Check client ID, package, and SHA-1.',
     GoogleSignInExceptionCode.providerConfigurationError =>
-      'Google Sign-In provider setup failed. Check Google Play services and OAuth setup.',
+      'Google Sign-In setup failed. Check the Android package name, SHA-1, Drive API, OAuth consent screen, and web client ID/serverClientId.',
     GoogleSignInExceptionCode.canceled =>
       'Google sign-in was canceled. If this happened after account selection, check OAuth setup.',
     GoogleSignInExceptionCode.uiUnavailable =>

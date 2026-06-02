@@ -9,6 +9,9 @@ extension type _OrganoteFs(JSObject _) implements JSObject {
   external bool isSupported();
   external String supportMessage();
   external String rootName();
+  external JSPromise<JSString> restoreRoot();
+  external JSPromise<JSString> rootPermission();
+  external JSPromise<JSString> requestRootPermission();
   external JSPromise<JSString> chooseRoot();
   external JSPromise<JSAny?> ensureStructure(JSArray<JSString> directories);
   external JSPromise<JSArray<JSObject>> listFiles(
@@ -35,6 +38,7 @@ FileStore createFileStore() => WebFileSystemAccessStore();
 
 class WebFileSystemAccessStore implements FileStore {
   bool _initialized = false;
+  bool _restoreAttempted = false;
 
   @override
   Future<void> initialize({String? rootPath}) async {
@@ -44,13 +48,17 @@ class WebFileSystemAccessStore implements FileStore {
         _organoteFs.supportMessage(),
       );
     }
-    if (_organoteFs.rootName().isEmpty) {
-      throw const StorageUnavailableException(
-        StorageUnavailableReason.rootNotSelected,
-        'Choose a storage folder from a direct user gesture.',
+    await _restorePersistedRoot();
+    if (!_initialized) {
+      throw StorageUnavailableException(
+        _organoteFs.rootName().isEmpty
+            ? StorageUnavailableReason.rootNotSelected
+            : StorageUnavailableReason.permissionDenied,
+        _organoteFs.rootName().isEmpty
+            ? 'Choose a storage folder from a direct user gesture.'
+            : 'Reconnect folder access from a direct user gesture.',
       );
     }
-    _initialized = true;
     await ensureStructure();
   }
 
@@ -61,6 +69,21 @@ class WebFileSystemAccessStore implements FileStore {
         StorageUnavailableReason.unsupportedPlatform,
         _organoteFs.supportMessage(),
       );
+    }
+    await _restorePersistedRoot();
+    if (!_initialized && _organoteFs.rootName().isNotEmpty) {
+      final permission = await _organoteFs.requestRootPermission().toDart;
+      if (permission.toDart == 'granted') {
+        _initialized = true;
+        await ensureStructure();
+        return;
+      }
+      if (permission.toDart == 'denied') {
+        throw StorageUnavailableException(
+          StorageUnavailableReason.permissionDenied,
+          'Folder permission was denied for ${_organoteFs.rootName()}.',
+        );
+      }
     }
     await _organoteFs.chooseRoot().toDart;
     _initialized = true;
@@ -75,14 +98,22 @@ class WebFileSystemAccessStore implements FileStore {
         message: _organoteFs.supportMessage(),
       );
     }
+    await _restorePersistedRoot();
     final rootName = _organoteFs.rootName();
-    if (rootName.isEmpty || !_initialized) {
-      return const StorageStatus.unavailable(
-        reason: StorageUnavailableReason.rootNotSelected,
-        message: 'Choose a real storage folder before using Organote.',
+    if (_initialized && rootName.isNotEmpty) {
+      return StorageStatus.available(rootLabel: '$rootName (chosen folder)');
+    }
+    if (rootName.isNotEmpty) {
+      return StorageStatus.unavailable(
+        reason: StorageUnavailableReason.permissionDenied,
+        message: 'Reconnect folder access for $rootName.',
+        rootLabel: '$rootName (saved folder)',
       );
     }
-    return StorageStatus.available(rootLabel: '$rootName (chosen folder)');
+    return const StorageStatus.unavailable(
+      reason: StorageUnavailableReason.rootNotSelected,
+      message: 'Choose a real storage folder before using Organote.',
+    );
   }
 
   @override
@@ -193,6 +224,21 @@ class WebFileSystemAccessStore implements FileStore {
         StorageUnavailableReason.rootNotSelected,
         'Choose a storage folder from a direct user gesture.',
       );
+    }
+  }
+
+  Future<void> _restorePersistedRoot() async {
+    if (_restoreAttempted) {
+      return;
+    }
+    _restoreAttempted = true;
+    await _organoteFs.restoreRoot().toDart;
+    if (_organoteFs.rootName().isEmpty) {
+      return;
+    }
+    final permission = await _organoteFs.rootPermission().toDart;
+    if (permission.toDart == 'granted') {
+      _initialized = true;
     }
   }
 }

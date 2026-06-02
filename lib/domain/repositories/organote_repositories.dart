@@ -120,6 +120,8 @@ abstract interface class ComplianceRepository {
 abstract interface class SyncRepository {
   Stream<SyncStatus> watchSyncStatus();
 
+  Future<void> prepareGoogleDriveSignIn();
+
   Future<void> signInGoogleDrive();
 
   Future<void> syncNow();

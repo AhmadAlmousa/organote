@@ -95,9 +95,12 @@ void main() {
       ThemePreference.light.index,
     );
 
-    await tester.tap(find.byTooltip('Azure'));
+    await tester.drag(find.byType(Slider), const Offset(180, 0));
     await tester.pump();
-    expect(prefs.getDouble('organote.ui.accentHue'), OrgAccents.azure.hue);
+    expect(
+      prefs.getDouble('organote.ui.accentHue'),
+      isNot(OrgAccents.mint.hue),
+    );
 
     await tester.tap(find.text('Sync now'));
     await tester.pump();
@@ -108,6 +111,79 @@ void main() {
     );
     await tester.pump();
     expect(prefs.getBool(ErrorLogService.enabledPreferenceKey), isTrue);
+  });
+
+  testWidgets('SettingsScreen uses one Drive action while disconnected', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(900, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final prefs = await _prefs();
+    final syncRepo = _FakeSyncRepo(
+      status: const SyncStatus(phase: SyncPhase.idle),
+    );
+
+    await tester.pumpWidget(
+      _SettingsHarness(
+        prefs: prefs,
+        snapshot: _snapshot(),
+        fileStore: _FakeFileStore(
+          status: const StorageStatus.available(rootLabel: 'memory'),
+        ),
+        syncRepository: syncRepo,
+        complianceRepository: _FakeComplianceRepo(
+          summary: _snapshot().complianceSummary,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Connect Drive'), findsOneWidget);
+    expect(find.text('Sync now'), findsNothing);
+
+    await tester.tap(find.text('Connect Drive'));
+    await tester.pump();
+
+    expect(syncRepo.signInCalls, 1);
+    expect(syncRepo.syncCalls, 0);
+  });
+
+  testWidgets('SettingsScreen distinguishes reconnect from changing storage', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(900, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final store = _FakeFileStore(
+      status: const StorageStatus.unavailable(
+        reason: StorageUnavailableReason.permissionDenied,
+        message: 'Reconnect folder access for Organote.',
+        rootLabel: 'Organote (saved folder)',
+      ),
+    );
+
+    await tester.pumpWidget(
+      _SettingsHarness(
+        prefs: await _prefs(),
+        snapshot: _snapshot(),
+        fileStore: store,
+        syncRepository: _FakeSyncRepo(
+          status: const SyncStatus(phase: SyncPhase.idle, signedIn: true),
+        ),
+        complianceRepository: _FakeComplianceRepo(
+          summary: _snapshot().complianceSummary,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('Reconnect folder'), findsOneWidget);
+
+    await tester.tap(find.text('Reconnect folder'));
+    await tester.pump();
+
+    expect(store.chooseCalls, 1);
   });
 
   testWidgets('SettingsScreen opens trash and restores an entry', (
@@ -414,6 +490,9 @@ class _FakeSyncRepo implements SyncRepository {
   final SyncStatus status;
   int syncCalls = 0;
   int signInCalls = 0;
+
+  @override
+  Future<void> prepareGoogleDriveSignIn() async {}
 
   @override
   Future<void> signInGoogleDrive() async {

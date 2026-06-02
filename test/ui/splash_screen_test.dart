@@ -63,6 +63,29 @@ void main() {
     expect(store.chooseCount, 1);
     expect(find.text('Folder permission was denied.'), findsOneWidget);
   });
+
+  testWidgets('SplashScreen shows reconnect wording for saved web folders', (
+    tester,
+  ) async {
+    final store = _FakeFileStore(
+      status: const StorageStatus.unavailable(
+        reason: StorageUnavailableReason.permissionDenied,
+        message: 'Reconnect folder access for Organote.',
+        rootLabel: 'Organote (saved folder)',
+      ),
+    );
+
+    await tester.pumpWidget(_Harness(fileStore: store));
+    await tester.pump();
+
+    expect(find.text('Reconnect your Organote folder'), findsOneWidget);
+    expect(find.text('Reconnect folder'), findsOneWidget);
+
+    await tester.tap(find.text('Reconnect folder'));
+    await tester.pump();
+
+    expect(store.chooseCount, 1);
+  });
 }
 
 class _Harness extends StatelessWidget {
