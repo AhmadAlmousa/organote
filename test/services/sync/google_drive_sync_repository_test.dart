@@ -48,6 +48,61 @@ void main() {
     });
 
     test(
+      'previews remote note and template downloads that overwrite local files',
+      () async {
+        final store = MemoryFileStore();
+        await store.initialize();
+        final remote = _FakeRemoteFileProvider()
+          ..seed('notes/prod.md', '# Prod original\n')
+          ..seed('templates/server.md', '# Server original\n');
+        final repository = GoogleDriveSyncRepository(
+          fileStore: store,
+          remoteFileProvider: remote,
+        );
+
+        await repository.syncNow();
+        remote
+          ..bumpToFuture('notes/prod.md', '# Prod from Drive\n')
+          ..bumpToFuture('templates/server.md', '# Server from Drive\n');
+
+        final warnings = await repository.previewRemoteOverwrites();
+
+        expect(
+          warnings.map((warning) => warning.relativePath).toList(),
+          <String>['notes/prod.md', 'templates/server.md'],
+        );
+        expect(warnings.first.itemType, SyncOverwriteItemType.note);
+        expect(warnings.first.newerSide, SyncOverwriteFreshness.remote);
+        expect(warnings.last.itemType, SyncOverwriteItemType.template);
+        expect(warnings.last.newerSide, SyncOverwriteFreshness.remote);
+        expect(await store.readText('notes/prod.md'), '# Prod original\n');
+        expect(
+          await store.readText('templates/server.md'),
+          '# Server original\n',
+        );
+      },
+    );
+
+    test(
+      'does not preview remote-only notes or templates as overwrites',
+      () async {
+        final store = MemoryFileStore();
+        await store.initialize();
+        final remote = _FakeRemoteFileProvider()
+          ..seed('notes/remote.md', '# Remote\n')
+          ..seed('templates/remote.md', '# Remote template\n');
+        final repository = GoogleDriveSyncRepository(
+          fileStore: store,
+          remoteFileProvider: remote,
+        );
+
+        final warnings = await repository.previewRemoteOverwrites();
+
+        expect(warnings, isEmpty);
+      },
+    );
+
+    test(
       'uploads trash and Organote metadata but excludes ledger and diagnostics',
       () async {
         final store = MemoryFileStore();
@@ -270,6 +325,33 @@ void main() {
                   contains('Web OAuth client ID'),
                 ),
           ),
+        );
+      },
+    );
+
+    test(
+      'uses the Web OAuth client ID as Android serverClientId before fallback',
+      () {
+        expect(
+          resolveGoogleSignInAndroidServerClientId(
+            clientId: 'web-client.apps.googleusercontent.com',
+            serverClientId: 'android-client.apps.googleusercontent.com',
+          ),
+          'web-client.apps.googleusercontent.com',
+        );
+        expect(
+          resolveGoogleSignInAndroidServerClientId(
+            webClientId: 'explicit-web-client.apps.googleusercontent.com',
+            clientId: 'legacy-web-client.apps.googleusercontent.com',
+            serverClientId: 'android-client.apps.googleusercontent.com',
+          ),
+          'explicit-web-client.apps.googleusercontent.com',
+        );
+        expect(
+          resolveGoogleSignInAndroidServerClientId(
+            serverClientId: 'fallback-web-client.apps.googleusercontent.com',
+          ),
+          'fallback-web-client.apps.googleusercontent.com',
         );
       },
     );

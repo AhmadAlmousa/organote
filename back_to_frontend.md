@@ -165,6 +165,39 @@ The frontend assignments above are implemented in the current worktree:
 - Splash and Settings distinguish saved-folder permission re-grants with
   `Reconnect folder`.
 - Android setup errors are compacted to actionable OAuth setup checks.
+- Follow-up after user retest: the web entry point unregisters old Flutter
+  service workers before bootstrapping the app, preventing stale cached bundles
+  from showing the previous two-button Drive UI.
 
-The `google_sign_in_web_button*.dart` files still exist but are inactive; they
-can be deleted in a later cleanup once no imports remain.
+The `google_sign_in_web_button*.dart` files have been removed; Settings now owns
+the single visible Drive action.
+
+### Sync overwrite warning contract (2026-06-02)
+
+`SyncRepository` now exposes `previewRemoteOverwrites()`, returning
+`SyncOverwriteWarning` entries for note/template files where the next sync plan
+would download the Drive version over an existing local file. Each warning
+includes the relative path, item type, local modified time, remote modified time,
+and derived newer side. Settings calls this immediately after Drive sign-in and
+shows the warning dialog before any sync write occurs.
+
+Frontend design notes for the warning popup:
+
+- The dialog should feel like a focused risk review, not a generic alert. Keep
+  the title direct: remote Drive changes will replace local files on the next
+  sync.
+- Show one row per affected note/template with the relative path, a note/template
+  icon, local modified time, Drive modified time, and a compact status pill:
+  `Drive newer`, `Local newer`, or `Same time`.
+- Include templates with the same visual weight as notes. This warning is not
+  note-only.
+- Keep the list scrollable and capped visually so many conflicts do not overflow
+  mobile or desktop dialogs. Summarize hidden rows as `+N more affected files`.
+- Do not start sync from this dialog. It is informational after sign-in; the
+  existing `Sync now` action remains the user-controlled write step.
+- If the preview scan fails after sign-in, keep Drive connected and show a
+  compact toast that the overwrite check failed instead of treating sign-in as
+  failed.
+- Verify on compact mobile and wide desktop that long paths and timestamps
+  truncate cleanly, status pills do not overlap, and the dialog actions remain
+  reachable.

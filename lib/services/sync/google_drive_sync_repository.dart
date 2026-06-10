@@ -27,6 +27,39 @@ const _googleSignInServerClientId = String.fromEnvironment(
   'GOOGLE_SIGN_IN_SERVER_CLIENT_ID',
 );
 
+String? _configuredGoogleSignInWebClientId({
+  String? clientId,
+  String? webClientId,
+}) {
+  return _configuredValue(
+        key: 'GOOGLE_SIGN_IN_WEB_CLIENT_ID',
+        defineValue: _googleSignInWebClientId,
+        override: webClientId,
+      ) ??
+      _configuredValue(
+        key: 'GOOGLE_SIGN_IN_CLIENT_ID',
+        defineValue: _googleSignInClientId,
+        override: clientId,
+      );
+}
+
+@visibleForTesting
+String? resolveGoogleSignInAndroidServerClientId({
+  String? clientId,
+  String? webClientId,
+  String? serverClientId,
+}) {
+  return _configuredGoogleSignInWebClientId(
+        clientId: clientId,
+        webClientId: webClientId,
+      ) ??
+      _configuredValue(
+        key: 'GOOGLE_SIGN_IN_SERVER_CLIENT_ID',
+        defineValue: _googleSignInServerClientId,
+        override: serverClientId,
+      );
+}
+
 String? _blankToNull(String? value) {
   final normalized = value?.trim();
   return normalized == null || normalized.isEmpty ? null : normalized;
@@ -72,28 +105,15 @@ class GoogleDriveSyncRepository implements SyncRepository {
        _ledgerStore = ledgerStore ?? SyncLedgerStore(fileStore),
        _remoteProvider = remoteFileProvider,
        _googleSignIn = googleSignIn ?? GoogleSignIn.instance,
-       _clientId =
-           _configuredValue(
-             key: 'GOOGLE_SIGN_IN_WEB_CLIENT_ID',
-             defineValue: _googleSignInWebClientId,
-             override: webClientId,
-           ) ??
-           _configuredValue(
-             key: 'GOOGLE_SIGN_IN_CLIENT_ID',
-             defineValue: _googleSignInClientId,
-             override: clientId,
-           ),
-       _serverClientId =
-           _configuredValue(
-             key: 'GOOGLE_SIGN_IN_SERVER_CLIENT_ID',
-             defineValue: _googleSignInServerClientId,
-             override: serverClientId,
-           ) ??
-           _configuredValue(
-             key: 'GOOGLE_SIGN_IN_WEB_CLIENT_ID',
-             defineValue: _googleSignInWebClientId,
-             override: webClientId,
-           ) {
+       _clientId = _configuredGoogleSignInWebClientId(
+         clientId: clientId,
+         webClientId: webClientId,
+       ),
+       _serverClientId = resolveGoogleSignInAndroidServerClientId(
+         clientId: clientId,
+         webClientId: webClientId,
+         serverClientId: serverClientId,
+       ) {
     _statusController.add(const SyncStatus());
   }
 
@@ -202,6 +222,16 @@ class GoogleDriveSyncRepository implements SyncRepository {
     return _syncLock!;
   }
 
+  @override
+  Future<List<SyncOverwriteWarning>> previewRemoteOverwrites() async {
+    final remoteProvider = _remoteProvider;
+    if (remoteProvider == null) {
+      return const <SyncOverwriteWarning>[];
+    }
+    final plan = await _buildSyncPlan(remoteProvider);
+    return _remoteOverwriteWarnings(plan);
+  }
+
   void scheduleFocusedSync({Duration debounce = const Duration(seconds: 2)}) {
     _focusDebounce?.cancel();
     _focusDebounce = Timer(debounce, syncNow);
@@ -222,20 +252,8 @@ class GoogleDriveSyncRepository implements SyncRepository {
       const SyncStatus(phase: SyncPhase.scanning, signedIn: true),
     );
 
-    final referencedAssets = await _referencedAssetPaths();
-    final local = await _buildLocalManifest();
-    final remote = await remoteProvider.listManifest(
-      referencedAssetPaths: referencedAssets,
-    );
-    final ledger = await _ledgerStore.read();
-    final actions = _reconciler.reconcile(
-      local: local,
-      remote: remote,
-      ledger: ledger,
-      trashedOriginalPaths: await _trashedOriginalPaths(),
-      referencedAssetPaths: referencedAssets,
-    );
-    final executableActions = actions
+    final plan = await _buildSyncPlan(remoteProvider);
+    final executableActions = plan.actions
         .where((action) => action.type != SyncPlanActionType.none)
         .toList();
     final conflicts = executableActions
@@ -258,13 +276,13 @@ class GoogleDriveSyncRepository implements SyncRepository {
     for (final action in executableActions) {
       await _executeAction(
         action,
-        local: local,
-        remote: remote,
-        ledger: ledger,
+        local: plan.local,
+        remote: plan.remote,
+        ledger: plan.ledger,
         remoteProvider: remoteProvider,
       );
     }
-    await _ledgerStore.write(ledger);
+    await _ledgerStore.write(plan.ledger);
 
     _statusController.add(
       SyncStatus(
@@ -274,6 +292,52 @@ class GoogleDriveSyncRepository implements SyncRepository {
         conflictCount: conflicts,
       ),
     );
+  }
+
+  Future<_SyncPlan> _buildSyncPlan(RemoteFileProvider remoteProvider) async {
+    final referencedAssets = await _referencedAssetPaths();
+    final local = await _buildLocalManifest();
+    final remote = await remoteProvider.listManifest(
+      referencedAssetPaths: referencedAssets,
+    );
+    final ledger = await _ledgerStore.read();
+    final actions = _reconciler.reconcile(
+      local: local,
+      remote: remote,
+      ledger: ledger,
+      trashedOriginalPaths: await _trashedOriginalPaths(),
+      referencedAssetPaths: referencedAssets,
+    );
+    return _SyncPlan(
+      local: local,
+      remote: remote,
+      ledger: ledger,
+      actions: actions,
+    );
+  }
+
+  List<SyncOverwriteWarning> _remoteOverwriteWarnings(_SyncPlan plan) {
+    final warnings = <SyncOverwriteWarning>[];
+    for (final action in plan.actions) {
+      if (!_downloadsRemoteToExistingLocal(action.type)) {
+        continue;
+      }
+      final localEntry = plan.local[action.relativePath];
+      final remoteEntry = plan.remote[action.relativePath];
+      final itemType = _overwriteItemType(action.relativePath);
+      if (localEntry == null || remoteEntry == null || itemType == null) {
+        continue;
+      }
+      warnings.add(
+        SyncOverwriteWarning(
+          relativePath: action.relativePath,
+          itemType: itemType,
+          localModifiedAt: localEntry.modifiedAt,
+          remoteModifiedAt: remoteEntry.modifiedAt,
+        ),
+      );
+    }
+    return warnings;
   }
 
   Future<void> _initializeGoogleSignIn() async {
@@ -304,7 +368,8 @@ class GoogleDriveSyncRepository implements SyncRepository {
         code: GoogleSignInExceptionCode.clientConfigurationError,
         description:
             'Android Google Sign-In needs the Web OAuth client ID as serverClientId. '
-            'Set GOOGLE_SIGN_IN_WEB_CLIENT_ID or GOOGLE_SIGN_IN_CLIENT_ID in .env.',
+            'Set GOOGLE_SIGN_IN_WEB_CLIENT_ID or GOOGLE_SIGN_IN_CLIENT_ID in .env. '
+            'GOOGLE_SIGN_IN_SERVER_CLIENT_ID is only a fallback and must also be a Web OAuth client ID.',
       );
     }
     await _googleSignIn.initialize(
@@ -464,11 +529,40 @@ class GoogleDriveSyncRepository implements SyncRepository {
         path.startsWith('.organote/');
   }
 
+  static bool _downloadsRemoteToExistingLocal(SyncPlanActionType type) {
+    return type == SyncPlanActionType.downloadRemote ||
+        type == SyncPlanActionType.downloadRemoteConflictWinner;
+  }
+
+  static SyncOverwriteItemType? _overwriteItemType(String path) {
+    if (path.startsWith('notes/') && path.endsWith('.md')) {
+      return SyncOverwriteItemType.note;
+    }
+    if (path.startsWith('templates/') && path.endsWith('.md')) {
+      return SyncOverwriteItemType.template;
+    }
+    return null;
+  }
+
   void dispose() {
     _focusDebounce?.cancel();
     unawaited(_statusController.close());
     _authClient?.close();
   }
+}
+
+class _SyncPlan {
+  const _SyncPlan({
+    required this.local,
+    required this.remote,
+    required this.ledger,
+    required this.actions,
+  });
+
+  final Map<String, SyncManifestEntry> local;
+  final Map<String, SyncManifestEntry> remote;
+  final Map<String, SyncLedgerEntry> ledger;
+  final List<SyncPlanAction> actions;
 }
 
 String _syncErrorMessage(Object error) {

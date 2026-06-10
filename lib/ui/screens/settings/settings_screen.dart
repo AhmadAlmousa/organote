@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -72,13 +74,39 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (_syncBusy) return;
     setState(() => _syncBusy = true);
     try {
-      await ref.read(syncRepositoryProvider).signInGoogleDrive();
+      final syncRepository = ref.read(syncRepositoryProvider);
+      await syncRepository.signInGoogleDrive();
       if (!mounted) return;
-      showOrgToast(
-        context,
-        message: 'Drive connected',
-        icon: Icons.cloud_done_rounded,
-      );
+      late final List<SyncOverwriteWarning> overwriteWarnings;
+      try {
+        overwriteWarnings = await syncRepository.previewRemoteOverwrites();
+      } catch (error, stackTrace) {
+        await ref
+            .read(errorLogServiceProvider)
+            .recordError(
+              error,
+              stackTrace,
+              source: 'settings.previewRemoteOverwrites',
+            );
+        if (!mounted) return;
+        showOrgToast(
+          context,
+          message: 'Drive connected; overwrite check failed',
+          icon: Icons.cloud_done_rounded,
+          background: OrgPaletteScope.of(context).warning,
+        );
+        return;
+      }
+      if (!mounted) return;
+      if (overwriteWarnings.isEmpty) {
+        showOrgToast(
+          context,
+          message: 'Drive connected',
+          icon: Icons.cloud_done_rounded,
+        );
+      } else {
+        await _showRemoteOverwriteWarning(overwriteWarnings);
+      }
     } catch (error, stackTrace) {
       await ref
           .read(errorLogServiceProvider)
@@ -93,6 +121,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     } finally {
       if (mounted) setState(() => _syncBusy = false);
     }
+  }
+
+  Future<void> _showRemoteOverwriteWarning(
+    List<SyncOverwriteWarning> warnings,
+  ) {
+    return showDialog<void>(
+      context: context,
+      builder: (context) => _RemoteOverwriteDialog(warnings: warnings),
+    );
   }
 
   Future<void> _syncNow() async {
@@ -386,6 +423,393 @@ String _compactText(String message) {
   }
   return '${message.substring(0, 93)}...';
 }
+
+class _RemoteOverwriteDialog extends StatelessWidget {
+  const _RemoteOverwriteDialog({required this.warnings});
+
+  static const _previewLimit = 8;
+
+  final List<SyncOverwriteWarning> warnings;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = OrgPaletteScope.of(context);
+    final media = MediaQuery.sizeOf(context);
+    final contentWidth = math.min(520.0, media.width - 56);
+    final listMaxHeight = math.min(340.0, media.height * 0.4);
+
+    // Surface the riskiest rows first: a "Local newer" conflict means newer
+    // local edits are about to be replaced by Drive, so those must stay
+    // visible within the capped preview rather than being arbitrarily hidden.
+    final sorted = [...warnings]
+      ..sort((a, b) {
+        final byRisk = _freshnessRank(
+          a.newerSide,
+        ).compareTo(_freshnessRank(b.newerSide));
+        if (byRisk != 0) return byRisk;
+        return a.relativePath.compareTo(b.relativePath);
+      });
+    final visibleWarnings = sorted.take(_previewLimit).toList();
+    final hiddenCount = sorted.length - visibleWarnings.length;
+    final localNewerCount = warnings
+        .where((w) => w.newerSide == SyncOverwriteFreshness.local)
+        .length;
+
+    return AlertDialog(
+      backgroundColor: palette.surface,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: palette.border),
+      ),
+      titlePadding: const EdgeInsets.fromLTRB(22, 20, 22, 0),
+      contentPadding: const EdgeInsets.fromLTRB(22, 14, 22, 8),
+      actionsPadding: const EdgeInsets.fromLTRB(18, 0, 18, 16),
+      title: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: palette.warning.withAlpha(34),
+              borderRadius: BorderRadius.circular(13),
+            ),
+            child: Icon(
+              Icons.warning_amber_rounded,
+              color: palette.warning,
+              size: 22,
+            ),
+          ),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Text(
+              'Remote changes will replace local files',
+              style: TextStyle(
+                color: palette.text,
+                fontWeight: FontWeight.w900,
+                fontSize: 19,
+              ),
+            ),
+          ),
+        ],
+      ),
+      content: SizedBox(
+        width: contentWidth,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'The next sync will download Drive’s copy of '
+              '${_overwriteBreakdownLabel(warnings)} over your local files.',
+              style: TextStyle(
+                color: palette.textSecondary,
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+                height: 1.35,
+              ),
+            ),
+            if (localNewerCount > 0) ...[
+              const SizedBox(height: 12),
+              _OverwriteRiskCallout(
+                label: _overwriteRiskLabel(localNewerCount),
+              ),
+            ],
+            const SizedBox(height: 14),
+            ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: listMaxHeight),
+              child: ListView.separated(
+                shrinkWrap: true,
+                itemCount: visibleWarnings.length + (hiddenCount > 0 ? 1 : 0),
+                separatorBuilder: (_, _) => const SizedBox(height: 8),
+                itemBuilder: (context, index) {
+                  if (index >= visibleWarnings.length) {
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        '+$hiddenCount more affected files',
+                        style: TextStyle(
+                          color: palette.textTertiary,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 12,
+                        ),
+                      ),
+                    );
+                  }
+                  return _RemoteOverwriteRow(warning: visibleWarnings[index]);
+                },
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Icon(
+                  Icons.info_outline_rounded,
+                  size: 14,
+                  color: palette.textTertiary,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Nothing changes yet — review, then use Sync now when ready.',
+                    style: TextStyle(
+                      color: palette.textTertiary,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 11.5,
+                      height: 1.3,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Got it'),
+        ),
+      ],
+    );
+  }
+}
+
+class _OverwriteRiskCallout extends StatelessWidget {
+  const _OverwriteRiskCallout({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = OrgPaletteScope.of(context);
+    return Container(
+      padding: const EdgeInsetsDirectional.fromSTEB(11, 9, 12, 9),
+      decoration: BoxDecoration(
+        color: palette.danger.withAlpha(24),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: palette.danger.withAlpha(70)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.priority_high_rounded, size: 17, color: palette.danger),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                color: palette.isDark
+                    ? palette.danger
+                    : palette.danger.withAlpha(235),
+                fontWeight: FontWeight.w800,
+                fontSize: 12.5,
+                height: 1.3,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RemoteOverwriteRow extends StatelessWidget {
+  const _RemoteOverwriteRow({required this.warning});
+
+  final SyncOverwriteWarning warning;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = OrgPaletteScope.of(context);
+    final freshness = warning.newerSide;
+    final freshnessColor = _freshnessColor(palette, freshness);
+    final atRisk = freshness == SyncOverwriteFreshness.local;
+    return Container(
+      padding: const EdgeInsetsDirectional.fromSTEB(11, 10, 11, 10),
+      decoration: BoxDecoration(
+        color: atRisk ? palette.danger.withAlpha(18) : palette.bgSecondary,
+        borderRadius: BorderRadius.circular(13),
+        border: Border.all(
+          color: atRisk ? palette.danger.withAlpha(70) : palette.border,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                _overwriteTypeIcon(warning.itemType),
+                color: atRisk ? freshnessColor : palette.textTertiary,
+                size: 17,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  warning.relativePath,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: palette.text,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              _StatusPill(
+                label: _freshnessLabel(freshness),
+                color: freshnessColor,
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: _TimestampCell(
+                  label: 'Local ${_overwriteTypeLabel(warning.itemType)}',
+                  value: _formatSyncDateTime(warning.localModifiedAt),
+                  highlightColor: freshness == SyncOverwriteFreshness.local
+                      ? freshnessColor
+                      : null,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _TimestampCell(
+                  label: 'Drive ${_overwriteTypeLabel(warning.itemType)}',
+                  value: _formatSyncDateTime(warning.remoteModifiedAt),
+                  highlightColor: freshness == SyncOverwriteFreshness.remote
+                      ? freshnessColor
+                      : null,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TimestampCell extends StatelessWidget {
+  const _TimestampCell({
+    required this.label,
+    required this.value,
+    this.highlightColor,
+  });
+
+  final String label;
+  final String value;
+  final Color? highlightColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = OrgPaletteScope.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: palette.textTertiary,
+            fontWeight: FontWeight.w800,
+            fontSize: 10.5,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: highlightColor ?? palette.textSecondary,
+            fontWeight: FontWeight.w800,
+            fontSize: 11.5,
+            fontFamily: 'JetBrainsMono',
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+String _overwriteBreakdownLabel(List<SyncOverwriteWarning> warnings) {
+  final notes = warnings
+      .where((w) => w.itemType == SyncOverwriteItemType.note)
+      .length;
+  final templates = warnings.length - notes;
+  final parts = <String>[];
+  if (notes > 0) {
+    parts.add(notes == 1 ? '1 note' : '$notes notes');
+  }
+  if (templates > 0) {
+    parts.add(templates == 1 ? '1 template' : '$templates templates');
+  }
+  if (parts.isEmpty) {
+    return 'these files';
+  }
+  return parts.join(' and ');
+}
+
+String _overwriteRiskLabel(int localNewerCount) {
+  final subject = localNewerCount == 1
+      ? '1 file has'
+      : '$localNewerCount files have';
+  return '$subject newer local edits that will be replaced by Drive.';
+}
+
+String _overwriteTypeLabel(SyncOverwriteItemType type) {
+  return switch (type) {
+    SyncOverwriteItemType.note => 'note',
+    SyncOverwriteItemType.template => 'template',
+  };
+}
+
+IconData _overwriteTypeIcon(SyncOverwriteItemType type) {
+  return switch (type) {
+    SyncOverwriteItemType.note => Icons.note_alt_rounded,
+    SyncOverwriteItemType.template => Icons.dashboard_customize_rounded,
+  };
+}
+
+String _freshnessLabel(SyncOverwriteFreshness freshness) {
+  return switch (freshness) {
+    SyncOverwriteFreshness.local => 'Local newer',
+    SyncOverwriteFreshness.remote => 'Drive newer',
+    SyncOverwriteFreshness.same => 'Same time',
+  };
+}
+
+// Lower rank sorts first. "Local newer" is the data-loss case (newer local
+// edits about to be overwritten by Drive), so it leads the review.
+int _freshnessRank(SyncOverwriteFreshness freshness) {
+  return switch (freshness) {
+    SyncOverwriteFreshness.local => 0,
+    SyncOverwriteFreshness.same => 1,
+    SyncOverwriteFreshness.remote => 2,
+  };
+}
+
+Color _freshnessColor(OrgPalette palette, SyncOverwriteFreshness freshness) {
+  return switch (freshness) {
+    SyncOverwriteFreshness.local => palette.danger,
+    SyncOverwriteFreshness.remote => palette.warning,
+    SyncOverwriteFreshness.same => palette.textTertiary,
+  };
+}
+
+String _formatSyncDateTime(DateTime date) {
+  final local = date.toLocal();
+  return '${local.year}-${_two(local.month)}-${_two(local.day)} ${_two(local.hour)}:${_two(local.minute)}';
+}
+
+String _two(int value) => value.toString().padLeft(2, '0');
 
 class _SettingsHeader extends StatelessWidget {
   const _SettingsHeader({required this.syncStatus, required this.issueCount});

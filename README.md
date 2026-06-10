@@ -225,12 +225,15 @@ Web builds can also accept
 `--dart-define=GOOGLE_SIGN_IN_WEB_CLIENT_ID=<WEB_CLIENT_ID>`, but the preferred
 web configuration is the Google plugin meta tag.
 
-If you use a separate server client ID, set it too:
+Android passes the Web OAuth client ID as `serverClientId`. Keep
+`GOOGLE_SIGN_IN_SERVER_CLIENT_ID` empty unless that value is also a Web OAuth
+client ID; the app treats it only as a fallback after
+`GOOGLE_SIGN_IN_WEB_CLIENT_ID` and `GOOGLE_SIGN_IN_CLIENT_ID`.
 
 ```env
 GOOGLE_SIGN_IN_WEB_CLIENT_ID=<WEB_CLIENT_ID>
 GOOGLE_SIGN_IN_CLIENT_ID=
-GOOGLE_SIGN_IN_SERVER_CLIENT_ID=<SERVER_CLIENT_ID>
+GOOGLE_SIGN_IN_SERVER_CLIENT_ID=
 ```
 
 The `.env` file is bundled into native app builds. OAuth client IDs are not

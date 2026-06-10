@@ -87,6 +87,10 @@ enum TrashEntryType { note, template, asset, category, other }
 
 enum SyncPhase { idle, signingIn, scanning, syncing, complete, error }
 
+enum SyncOverwriteItemType { note, template }
+
+enum SyncOverwriteFreshness { local, remote, same }
+
 enum ThemePreference { system, light, dark, oled }
 
 class TemplateField {
@@ -425,6 +429,30 @@ class SyncLedgerEntry {
       remoteFileId: json['remoteFileId'] as String?,
       softDeleted: json['softDeleted'] as bool? ?? false,
     );
+  }
+}
+
+class SyncOverwriteWarning {
+  const SyncOverwriteWarning({
+    required this.relativePath,
+    required this.itemType,
+    required this.localModifiedAt,
+    required this.remoteModifiedAt,
+  });
+
+  final String relativePath;
+  final SyncOverwriteItemType itemType;
+  final DateTime localModifiedAt;
+  final DateTime remoteModifiedAt;
+
+  SyncOverwriteFreshness get newerSide {
+    if (remoteModifiedAt.isAfter(localModifiedAt)) {
+      return SyncOverwriteFreshness.remote;
+    }
+    if (localModifiedAt.isAfter(remoteModifiedAt)) {
+      return SyncOverwriteFreshness.local;
+    }
+    return SyncOverwriteFreshness.same;
   }
 }
 

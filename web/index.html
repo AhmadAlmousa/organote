@@ -47,6 +47,32 @@
     * https://docs.flutter.dev/platform-integration/web/initialization
   -->
   <script src="organote_file_system.js"></script>
-  <script src="flutter_bootstrap.js" async></script>
+  <script>
+    (function () {
+      function loadFlutter() {
+        var script = document.createElement('script');
+        script.src = 'flutter_bootstrap.js';
+        script.async = true;
+        document.body.appendChild(script);
+      }
+
+      if (!('serviceWorker' in navigator)) {
+        loadFlutter();
+        return;
+      }
+
+      navigator.serviceWorker
+        .getRegistrations()
+        .then(function (registrations) {
+          return Promise.all(
+            registrations.map(function (registration) {
+              return registration.unregister();
+            })
+          );
+        })
+        .catch(function () {})
+        .then(loadFlutter);
+    })();
+  </script>
 </body>
 </html>

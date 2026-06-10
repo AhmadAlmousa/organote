@@ -124,6 +124,8 @@ abstract interface class SyncRepository {
 
   Future<void> signInGoogleDrive();
 
+  Future<List<SyncOverwriteWarning>> previewRemoteOverwrites();
+
   Future<void> syncNow();
 }
 

@@ -149,6 +149,67 @@ void main() {
     expect(syncRepo.syncCalls, 0);
   });
 
+  testWidgets('SettingsScreen warns about Drive overwrites after connect', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(900, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final syncRepo = _FakeSyncRepo(
+      status: const SyncStatus(phase: SyncPhase.idle),
+      overwriteWarnings: <SyncOverwriteWarning>[
+        SyncOverwriteWarning(
+          relativePath: 'notes/prod.md',
+          itemType: SyncOverwriteItemType.note,
+          localModifiedAt: DateTime.utc(2026, 1, 1, 9),
+          remoteModifiedAt: DateTime.utc(2026, 1, 2, 9),
+        ),
+        SyncOverwriteWarning(
+          relativePath: 'templates/server.md',
+          itemType: SyncOverwriteItemType.template,
+          localModifiedAt: DateTime.utc(2026, 1, 3, 9),
+          remoteModifiedAt: DateTime.utc(2026, 1, 2, 9),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      _SettingsHarness(
+        prefs: await _prefs(),
+        snapshot: _snapshot(),
+        fileStore: _FakeFileStore(
+          status: const StorageStatus.available(rootLabel: 'memory'),
+        ),
+        syncRepository: syncRepo,
+        complianceRepository: _FakeComplianceRepo(
+          summary: _snapshot().complianceSummary,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.text('Connect Drive'));
+    await tester.pumpAndSettle();
+
+    expect(syncRepo.signInCalls, 1);
+    expect(syncRepo.syncCalls, 0);
+    expect(
+      find.text('Remote changes will replace local files'),
+      findsOneWidget,
+    );
+    expect(find.text('notes/prod.md'), findsOneWidget);
+    expect(find.text('templates/server.md'), findsOneWidget);
+    expect(find.text('Drive newer'), findsOneWidget);
+    expect(find.text('Local newer'), findsOneWidget);
+    // The one local-newer row is a data-loss case, so the dialog calls it out.
+    expect(
+      find.text('1 file has newer local edits that will be replaced by Drive.'),
+      findsOneWidget,
+    );
+    // The dialog stays informational: it points back to Sync now, not a write.
+    expect(find.textContaining('Nothing changes yet'), findsOneWidget);
+  });
+
   testWidgets('SettingsScreen distinguishes reconnect from changing storage', (
     tester,
   ) async {
@@ -485,9 +546,13 @@ class _FakeLibraryRepo implements LibraryRepository {
 }
 
 class _FakeSyncRepo implements SyncRepository {
-  _FakeSyncRepo({required this.status});
+  _FakeSyncRepo({
+    required this.status,
+    this.overwriteWarnings = const <SyncOverwriteWarning>[],
+  });
 
   final SyncStatus status;
+  final List<SyncOverwriteWarning> overwriteWarnings;
   int syncCalls = 0;
   int signInCalls = 0;
 
@@ -497,6 +562,11 @@ class _FakeSyncRepo implements SyncRepository {
   @override
   Future<void> signInGoogleDrive() async {
     signInCalls += 1;
+  }
+
+  @override
+  Future<List<SyncOverwriteWarning>> previewRemoteOverwrites() async {
+    return overwriteWarnings;
   }
 
   @override
