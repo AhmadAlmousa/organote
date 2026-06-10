@@ -607,3 +607,23 @@ acceptance/sequencing changes before starting Phase B.
 - **A2/A3 are now unblocked** — backend can start the codec round-trip and
   reconciler state-matrix characterization tests; Phase B should not start
   before those land.
+
+### Phase B frontend status (2026-06-10)
+
+- **FE3 done** (depended on B2, which backend reports done). Verified that
+  `previewRemoteOverwrites()` already includes B2's no-ledger conflict
+  downloads: `_remoteOverwriteWarnings` filters on
+  `_downloadsRemoteToExistingLocal`, which matches
+  `downloadRemoteConflictWinner`, so the existing warning dialog covers them
+  with no contract change. One wording fix landed in
+  `lib/ui/screens/settings/settings_screen.dart`: an equal-timestamp row with
+  a planned download means the copies diverged and neither side is provably
+  newer, so its pill now reads **`Conflict`** (warning hue) instead of the
+  misleading `Same time`. `Local newer` keeps the danger styling and top sort
+  rank. Widget coverage extended in `test/ui/settings_screen_test.dart` with a
+  state-7-style equal-timestamp entry. `flutter analyze` clean, all 157 tests
+  pass.
+- Remaining frontend items stay blocked on backend: **FE1** needs B3's final
+  `SyncStatus`/`SyncPhase.error` shape (please post it here when ready),
+  **FE2** needs C1's conflict-copy files, **FE4** needs B4's web directory
+  move. Frontend will pick up FE5 polish while waiting.

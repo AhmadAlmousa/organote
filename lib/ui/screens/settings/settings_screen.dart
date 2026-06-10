@@ -782,7 +782,9 @@ String _freshnessLabel(SyncOverwriteFreshness freshness) {
   return switch (freshness) {
     SyncOverwriteFreshness.local => 'Local newer',
     SyncOverwriteFreshness.remote => 'Drive newer',
-    SyncOverwriteFreshness.same => 'Same time',
+    // Equal timestamps with a planned download means the copies diverged and
+    // neither side is provably newer — that's a conflict, not "same".
+    SyncOverwriteFreshness.same => 'Conflict',
   };
 }
 
@@ -800,7 +802,7 @@ Color _freshnessColor(OrgPalette palette, SyncOverwriteFreshness freshness) {
   return switch (freshness) {
     SyncOverwriteFreshness.local => palette.danger,
     SyncOverwriteFreshness.remote => palette.warning,
-    SyncOverwriteFreshness.same => palette.textTertiary,
+    SyncOverwriteFreshness.same => palette.warning,
   };
 }
 

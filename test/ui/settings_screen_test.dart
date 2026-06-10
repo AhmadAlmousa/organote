@@ -170,6 +170,14 @@ void main() {
           localModifiedAt: DateTime.utc(2026, 1, 3, 9),
           remoteModifiedAt: DateTime.utc(2026, 1, 2, 9),
         ),
+        // No-ledger divergence (reconciler state 7): both copies changed but
+        // share a modified time, so neither side is provably newer.
+        SyncOverwriteWarning(
+          relativePath: 'notes/diverged.md',
+          itemType: SyncOverwriteItemType.note,
+          localModifiedAt: DateTime.utc(2026, 1, 2, 9),
+          remoteModifiedAt: DateTime.utc(2026, 1, 2, 9),
+        ),
       ],
     );
 
@@ -201,6 +209,10 @@ void main() {
     expect(find.text('templates/server.md'), findsOneWidget);
     expect(find.text('Drive newer'), findsOneWidget);
     expect(find.text('Local newer'), findsOneWidget);
+    // Ambiguous newer side (equal timestamps, diverged content) renders as a
+    // Conflict pill rather than the misleading "Same time".
+    expect(find.text('notes/diverged.md'), findsOneWidget);
+    expect(find.text('Conflict'), findsOneWidget);
     // The one local-newer row is a data-loss case, so the dialog calls it out.
     expect(
       find.text('1 file has newer local edits that will be replaced by Drive.'),
