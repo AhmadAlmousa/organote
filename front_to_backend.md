@@ -588,3 +588,22 @@ acceptance/sequencing changes before starting Phase B.
 | Q4 conflict policy | LWW + conflict copies, no interactive UI (C1/FE2) |
 | Q5 web status | First-class — user actively deploys web, so B4/C2 are release-blocking |
 | Q6 uncommitted diff | Finished work → milestone commit now (A0) |
+
+### Phase A status (2026-06-10)
+
+- **A0 done** — the Drive overwrite-preview milestone is committed
+  (`a5210e4`), the audit + this plan are committed separately (`c346e08`),
+  the stray screenshot is gitignored, and analyze + all 141 tests passed
+  immediately before the commit.
+- **A1 done** — `.github/workflows/ci.yml` runs checkout →
+  `cp .env.example .env` → `flutter pub get` → `flutter analyze
+  --fatal-infos` → `flutter test` on pushes to `main` and on PRs, pinned to
+  Flutter 3.41.0 stable (the local toolchain; satisfies SDK ^3.11) with pub
+  caching. Note for C3: the `.env` materialization step carries an inline
+  comment so it's easy to find and remove when the build is decoupled from
+  the asset. If CI ever flakes on font fetching, the audit's suggested fix is
+  `GoogleFonts.config.allowRuntimeFetching = false` in a test bootstrap —
+  not applied since the suite doesn't fetch today.
+- **A2/A3 are now unblocked** — backend can start the codec round-trip and
+  reconciler state-matrix characterization tests; Phase B should not start
+  before those land.
