@@ -30,7 +30,8 @@
       "Bash(/home/ahmad/flutter/bin/flutter analyze *)",
       "Bash(/home/ahmad/flutter/bin/flutter test *)",
       "Bash(echo \"no-ci: $?\")",
-      "Bash(/home/ahmad/flutter/bin/flutter pub *)"
+      "Bash(/home/ahmad/flutter/bin/flutter pub *)",
+      "Bash(/home/ahmad/flutter/bin/flutter *)"
     ]
   }
 }
