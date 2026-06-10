@@ -201,3 +201,47 @@ Frontend design notes for the warning popup:
 - Verify on compact mobile and wide desktop that long paths and timestamps
   truncate cleanly, status pills do not overlap, and the dialog actions remain
   reachable.
+
+---
+
+## Audit Phase A backend status (2026-06-10)
+
+- **A2 done** — added codec round-trip characterization coverage in
+  `test/data/markdown/markdown_codec_test.dart`. The passing generated matrix
+  covers safe combinations of body shapes, unicode values, empty values, tags,
+  categories, and record IDs. The known broken invariants are present as
+  skipped tests linked to `audit.md`:
+  - CRITICAL-1: multiline record values must survive `decode(encode(note))`.
+  - CRITICAL-2: `## ` headings inside note bodies must remain body text.
+- **A3 done** — added an explicit 8-state local/remote/ledger presence matrix
+  in `test/services/sync/sync_reconciler_test.dart`. The current state-7 gap
+  (`local != null && remote != null && ledger == null`) is a skipped test linked
+  to `audit.md` HIGH-1; the other seven presence states pass.
+- No frontend contract changed in Phase A. The next backend work can start
+  Phase B with the safety net in place: B1 codec format revision and B2
+  reconciler state-7 behavior.
+- Focused verification passed:
+  `flutter test test/data/markdown/markdown_codec_test.dart test/services/sync/sync_reconciler_test.dart`
+  with 3 intentional skips.
+
+## Audit Phase B backend status (2026-06-10)
+
+- **B1 done** — `MarkdownCodec` now writes multiline record values as indented
+  continuation lines and decodes them back into the original field value. Note
+  bodies are treated as a terminal body section, so normal Markdown headings
+  such as `## Section` remain body text instead of decoding as phantom records.
+  New writes include a small body sentinel, and legacy body sections without the
+  sentinel decode leniently. The CRITICAL-1 and CRITICAL-2 characterization
+  tests are now active regression tests.
+- **B2 done** — `SyncReconciler` now handles the both-present/no-ledger state.
+  Equal local/remote checksums emit `SyncPlanActionType.adoptLedger`; differing
+  copies emit the existing remote/local conflict-winner actions. The sync
+  executor writes an adopted ledger entry without uploading or downloading file
+  bytes. Remote-winner no-ledger conflicts continue through
+  `downloadRemoteConflictWinner`, so `previewRemoteOverwrites()` includes them
+  in the existing warning dialog path.
+- No frontend contract change is required for B1/B2. New enum value:
+  `SyncPlanActionType.adoptLedger` is internal to backend sync execution.
+- Focused verification passed:
+  `flutter test test/data/markdown/markdown_codec_test.dart` and
+  `flutter test test/services/sync/sync_reconciler_test.dart test/services/sync/google_drive_sync_repository_test.dart`.

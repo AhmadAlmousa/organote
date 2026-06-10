@@ -4,6 +4,7 @@ enum SyncPlanActionType {
   uploadLocal,
   downloadRemoteConflictWinner,
   uploadLocalConflictWinner,
+  adoptLedger,
   pushSoftDelete,
   deleteLocal,
   pruneLedger,

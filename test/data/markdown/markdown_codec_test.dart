@@ -77,6 +77,85 @@ void main() {
       expect(decoded.body, 'Freeform **markdown** body.');
     });
 
+    test(
+      'characterizes generated note round trips for safe markdown shapes',
+      () {
+        for (final testCase in _generatedRoundTripNoteCases()) {
+          final decoded = codec.decodeNote(codec.encodeNote(testCase.note));
+
+          _expectRoundTripNote(decoded, testCase.note, reason: testCase.name);
+        }
+      },
+    );
+
+    test('preserves multiline record values on round trip', () {
+      final note = Note(
+        id: 'rt-multiline-value',
+        title: 'Multiline Value',
+        categoryPath: 'audit',
+        records: const [
+          NoteRecord(
+            id: 'record-1',
+            label: 'Record 1',
+            values: {
+              'description': 'line one\nline two\nline three',
+              'status': 'active',
+            },
+          ),
+        ],
+      );
+
+      final decoded = codec.decodeNote(codec.encodeNote(note));
+
+      _expectRoundTripNote(decoded, note, reason: 'CRITICAL-1');
+    });
+
+    test('preserves body headings on round trip', () {
+      final note = Note(
+        id: 'rt-body-headings',
+        title: 'Body Headings',
+        categoryPath: 'audit',
+        records: const [],
+        body: 'Intro.\n\n## Section A\nDetails.\n\n## Section B\nMore.',
+      );
+
+      final decoded = codec.decodeNote(codec.encodeNote(note));
+
+      _expectRoundTripNote(decoded, note, reason: 'CRITICAL-2');
+    });
+
+    test(
+      'decodes legacy body sections with markdown headings as body text',
+      () {
+        const source = '''
+# Legacy Body
+
+## Body
+Intro.
+
+## Section A
+Details.
+
+## Section B
+More.
+
+---
+
+## Metadata
+- **id**: legacy-body
+- **category**: audit
+''';
+
+        final decoded = codec.decodeNote(source);
+
+        expect(decoded.records, isEmpty);
+        expect(
+          decoded.body,
+          'Intro.\n\n## Section A\nDetails.\n\n## Section B\nMore.',
+        );
+      },
+    );
+
     test('uses first templated value as record heading', () {
       const note = Note(
         id: 'booklet-note',
@@ -314,4 +393,128 @@ void main() {
       expect(decoded.records.single.values['field'], 'value');
     });
   });
+}
+
+List<_RoundTripNoteCase> _generatedRoundTripNoteCases() {
+  final bodyCases = <_RoundTripTextCase>[
+    const _RoundTripTextCase('empty body', ''),
+    const _RoundTripTextCase(
+      'unicode body',
+      'Arabic: \u0633\u0644\u0627\u0645. Emoji: \u{1F510}.',
+    ),
+    const _RoundTripTextCase(
+      'body thematic break',
+      'Intro paragraph.\n\n---\n\nAfter the break.',
+    ),
+  ];
+  final valueCases = <_RoundTripValuesCase>[
+    const _RoundTripValuesCase('plain values', {
+      'name': 'Alpha',
+      'url': 'https://example.test/a:b',
+    }),
+    const _RoundTripValuesCase('empty values', {'name': '', 'note': ''}),
+    const _RoundTripValuesCase('unicode values', {
+      'name': '\u0633\u0627\u0631\u0629',
+      'symbol': '\u{1F510}',
+    }),
+  ];
+  final cases = <_RoundTripNoteCase>[];
+
+  for (var bodyIndex = 0; bodyIndex < bodyCases.length; bodyIndex += 1) {
+    for (var valueIndex = 0; valueIndex < valueCases.length; valueIndex += 1) {
+      final bodyCase = bodyCases[bodyIndex];
+      final valueCase = valueCases[valueIndex];
+      cases.add(
+        _RoundTripNoteCase(
+          '${bodyCase.name} + ${valueCase.name}',
+          Note(
+            id: 'rt-$bodyIndex-$valueIndex',
+            title: 'Round Trip $bodyIndex $valueIndex',
+            tags: const ['audit', 'round-trip'],
+            categoryPath: 'audit/round-trip',
+            body: bodyCase.text,
+            records: [
+              NoteRecord(
+                id: 'record-$bodyIndex-$valueIndex',
+                label: 'Record $bodyIndex $valueIndex',
+                values: valueCase.values,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+  }
+
+  return cases;
+}
+
+void _expectRoundTripNote(
+  Note actual,
+  Note expected, {
+  required String reason,
+}) {
+  expect(actual.id, expected.id, reason: '$reason id');
+  expect(actual.title, expected.title, reason: '$reason title');
+  expect(actual.templateId, expected.templateId, reason: '$reason templateId');
+  expect(
+    actual.templateName,
+    expected.templateName,
+    reason: '$reason templateName',
+  );
+  expect(
+    actual.templateVersion,
+    expected.templateVersion,
+    reason: '$reason templateVersion',
+  );
+  expect(actual.icon, expected.icon, reason: '$reason icon');
+  expect(actual.tags, expected.tags, reason: '$reason tags');
+  expect(
+    actual.categoryPath,
+    expected.categoryPath,
+    reason: '$reason category',
+  );
+  expect(actual.body, expected.body, reason: '$reason body');
+  expect(actual.isPinned, expected.isPinned, reason: '$reason pinned');
+  expect(actual.isFavorite, expected.isFavorite, reason: '$reason favorite');
+  expect(actual.createdAt, expected.createdAt, reason: '$reason createdAt');
+  expect(actual.updatedAt, expected.updatedAt, reason: '$reason updatedAt');
+  expect(actual.records, hasLength(expected.records.length), reason: reason);
+
+  for (var i = 0; i < expected.records.length; i += 1) {
+    final actualRecord = actual.records[i];
+    final expectedRecord = expected.records[i];
+    expect(actualRecord.id, expectedRecord.id, reason: '$reason record[$i].id');
+    expect(
+      actualRecord.label,
+      expectedRecord.label,
+      reason: '$reason record[$i].label',
+    );
+    expect(
+      actualRecord.values,
+      expectedRecord.values,
+      reason: '$reason record[$i].values',
+    );
+  }
+}
+
+class _RoundTripNoteCase {
+  const _RoundTripNoteCase(this.name, this.note);
+
+  final String name;
+  final Note note;
+}
+
+class _RoundTripTextCase {
+  const _RoundTripTextCase(this.name, this.text);
+
+  final String name;
+  final String text;
+}
+
+class _RoundTripValuesCase {
+  const _RoundTripValuesCase(this.name, this.values);
+
+  final String name;
+  final Map<String, String> values;
 }

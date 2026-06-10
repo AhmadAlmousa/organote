@@ -61,6 +61,61 @@ void main() {
       expect(_type(actions, 'notes/new.md'), SyncPlanActionType.uploadLocal);
     });
 
+    test(
+      'state 7a: both exist without ledger and equal checksums adopt ledger',
+      () {
+        final actions = reconciler.reconcile(
+          local: {'notes/shared.md': entry('notes/shared.md', 'same', t2)},
+          remote: {
+            'notes/shared.md': entry(
+              'notes/shared.md',
+              'same',
+              t3,
+              remoteFileId: 'remote-shared',
+            ),
+          },
+          ledger: const {},
+        );
+
+        expect(
+          _type(actions, 'notes/shared.md'),
+          SyncPlanActionType.adoptLedger,
+        );
+      },
+    );
+
+    test(
+      'state 7b: both exist without ledger and remote-newer conflict downloads',
+      () {
+        final actions = reconciler.reconcile(
+          local: {'notes/shared.md': entry('notes/shared.md', 'local', t2)},
+          remote: {'notes/shared.md': entry('notes/shared.md', 'remote', t3)},
+          ledger: const {},
+        );
+
+        expect(
+          _type(actions, 'notes/shared.md'),
+          SyncPlanActionType.downloadRemoteConflictWinner,
+        );
+      },
+    );
+
+    test(
+      'state 7c: both exist without ledger and local-newer conflict uploads',
+      () {
+        final actions = reconciler.reconcile(
+          local: {'notes/shared.md': entry('notes/shared.md', 'local', t3)},
+          remote: {'notes/shared.md': entry('notes/shared.md', 'remote', t2)},
+          ledger: const {},
+        );
+
+        expect(
+          _type(actions, 'notes/shared.md'),
+          SyncPlanActionType.uploadLocalConflictWinner,
+        );
+      },
+    );
+
     test('state 3a: unchanged on both sides resolves to none', () {
       final actions = reconciler.reconcile(
         local: {'notes/stable.md': entry('notes/stable.md', 'same', t1)},
@@ -205,6 +260,101 @@ void main() {
       );
     });
 
+    group('8-state presence matrix characterization', () {
+      final scenarios = <_PresenceScenario>[
+        const _PresenceScenario(
+          name: 'local absent, remote absent, ledger absent emits no action',
+          hasLocal: false,
+          hasRemote: false,
+          hasLedger: false,
+        ),
+        const _PresenceScenario(
+          name: 'local absent, remote present, ledger absent downloads remote',
+          hasLocal: false,
+          hasRemote: true,
+          hasLedger: false,
+          expectedType: SyncPlanActionType.downloadRemote,
+        ),
+        const _PresenceScenario(
+          name: 'local present, remote absent, ledger absent uploads local',
+          hasLocal: true,
+          hasRemote: false,
+          hasLedger: false,
+          expectedType: SyncPlanActionType.uploadLocal,
+        ),
+        const _PresenceScenario(
+          name:
+              'local present, remote present, ledger absent emits a conflict action',
+          hasLocal: true,
+          hasRemote: true,
+          hasLedger: false,
+          expectedType: SyncPlanActionType.downloadRemoteConflictWinner,
+        ),
+        const _PresenceScenario(
+          name: 'local absent, remote absent, ledger present prunes ledger',
+          hasLocal: false,
+          hasRemote: false,
+          hasLedger: true,
+          expectedType: SyncPlanActionType.pruneLedger,
+        ),
+        const _PresenceScenario(
+          name:
+              'local absent, remote present, ledger present pushes soft-delete',
+          hasLocal: false,
+          hasRemote: true,
+          hasLedger: true,
+          expectedType: SyncPlanActionType.pushSoftDelete,
+        ),
+        const _PresenceScenario(
+          name: 'local present, remote absent, ledger present deletes local',
+          hasLocal: true,
+          hasRemote: false,
+          hasLedger: true,
+          expectedType: SyncPlanActionType.deleteLocal,
+        ),
+        const _PresenceScenario(
+          name: 'local present, remote present, ledger present emits unchanged',
+          hasLocal: true,
+          hasRemote: true,
+          hasLedger: true,
+          expectedType: SyncPlanActionType.none,
+        ),
+      ];
+
+      for (final scenario in scenarios) {
+        test(scenario.name, () {
+          const path = 'notes/matrix.md';
+          final local = scenario.hasLocal
+              ? {'notes/matrix.md': entry(path, 'local', t2)}
+              : const <String, SyncManifestEntry>{};
+          final remote = scenario.hasRemote
+              ? {'notes/matrix.md': entry(path, 'remote', t3)}
+              : const <String, SyncManifestEntry>{};
+          final entries = scenario.hasLedger
+              ? {
+                  'notes/matrix.md': ledger(
+                    path,
+                    checksum: scenario.hasLocal ? 'local' : 'old',
+                    remoteModifiedAt: scenario.hasRemote ? t3 : t1,
+                  ),
+                }
+              : const <String, SyncLedgerEntry>{};
+
+          final actions = reconciler.reconcile(
+            local: local,
+            remote: remote,
+            ledger: entries,
+          );
+
+          if (scenario.expectedType == null) {
+            expect(actions, isEmpty);
+          } else {
+            expect(_type(actions, path), scenario.expectedType);
+          }
+        });
+      }
+    });
+
     test(
       'remote soft-delete flag triggers deleteLocal when local still present',
       () {
@@ -310,4 +460,20 @@ void main() {
 
 SyncPlanActionType _type(List<SyncPlanAction> actions, String path) {
   return actions.singleWhere((action) => action.relativePath == path).type;
+}
+
+class _PresenceScenario {
+  const _PresenceScenario({
+    required this.name,
+    required this.hasLocal,
+    required this.hasRemote,
+    required this.hasLedger,
+    this.expectedType,
+  });
+
+  final String name;
+  final bool hasLocal;
+  final bool hasRemote;
+  final bool hasLedger;
+  final SyncPlanActionType? expectedType;
 }

@@ -503,6 +503,18 @@ class GoogleDriveSyncRepository implements SyncRepository {
           localSyncedAt: DateTime.now().toUtc(),
           remoteFileId: uploaded.remoteFileId,
         );
+      case SyncPlanActionType.adoptLedger:
+        final localEntry = local[path];
+        if (localEntry == null || remoteEntry == null) {
+          return;
+        }
+        ledger[path] = SyncLedgerEntry(
+          relativePath: path,
+          localChecksum: localEntry.checksum,
+          remoteModifiedAt: remoteEntry.modifiedAt,
+          localSyncedAt: DateTime.now().toUtc(),
+          remoteFileId: remoteEntry.remoteFileId,
+        );
       case SyncPlanActionType.pushSoftDelete:
         await remoteProvider.pushSoftDelete(
           path,

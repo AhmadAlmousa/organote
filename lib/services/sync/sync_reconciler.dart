@@ -62,6 +62,29 @@ class SyncReconciler {
         continue;
       }
 
+      if (localEntry != null && remoteEntry != null && ledgerEntry == null) {
+        if (localEntry.checksum == remoteEntry.checksum) {
+          actions.add(
+            SyncPlanAction(
+              type: SyncPlanActionType.adoptLedger,
+              relativePath: path,
+              reason: 'Local and remote match with no ledger.',
+            ),
+          );
+        } else {
+          actions.add(
+            SyncPlanAction(
+              type: remoteEntry.modifiedAt.isAfter(localEntry.modifiedAt)
+                  ? SyncPlanActionType.downloadRemoteConflictWinner
+                  : SyncPlanActionType.uploadLocalConflictWinner,
+              relativePath: path,
+              reason: 'Local and remote diverged with no ledger.',
+            ),
+          );
+        }
+        continue;
+      }
+
       if (localEntry != null && remoteEntry != null && ledgerEntry != null) {
         final localChanged = localEntry.checksum != ledgerEntry.localChecksum;
         final remoteChanged = remoteEntry.modifiedAt.isAfter(

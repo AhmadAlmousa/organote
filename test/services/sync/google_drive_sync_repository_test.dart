@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:organote/domain/models/models.dart';
+import 'package:organote/services/storage/file_store.dart';
 import 'package:organote/services/storage/memory_file_store.dart';
 import 'package:organote/services/sync/google_drive_sync_repository.dart';
 import 'package:organote/services/sync/remote_file_provider.dart';
@@ -46,6 +47,30 @@ void main() {
       expect(ledger.single['relativePath'], 'notes/remote.md');
       expect(ledger.single['remoteFileId'], 'remote-notes/remote.md');
     });
+
+    test(
+      'adopts ledger when matching local and remote files have no ledger',
+      () async {
+        final store = MemoryFileStore();
+        await store.initialize();
+        await store.writeText('notes/shared.md', '# Shared\n');
+        final remote = _FakeRemoteFileProvider()
+          ..seed('notes/shared.md', '# Shared\n');
+        final repository = GoogleDriveSyncRepository(
+          fileStore: store,
+          remoteFileProvider: remote,
+        );
+
+        await repository.syncNow();
+
+        expect(remote.uploadedPaths, isEmpty);
+        expect(await store.readText('notes/shared.md'), '# Shared\n');
+        final ledger = await _readLedger(store);
+        expect(ledger.single['relativePath'], 'notes/shared.md');
+        expect(ledger.single['localChecksum'], checksumText('# Shared\n'));
+        expect(ledger.single['remoteFileId'], 'remote-notes/shared.md');
+      },
+    );
 
     test(
       'previews remote note and template downloads that overwrite local files',
@@ -393,8 +418,7 @@ class _FakeRemoteFileProvider implements RemoteFileProvider {
         path,
         SyncManifestEntry(
           relativePath: path,
-          checksum:
-              '$path-${bytes.length}-${modifiedAt[path]!.toIso8601String()}',
+          checksum: checksumBytes(bytes),
           modifiedAt: modifiedAt[path] ?? DateTime.utc(2026),
           remoteFileId: 'remote-$path',
         ),
@@ -423,7 +447,7 @@ class _FakeRemoteFileProvider implements RemoteFileProvider {
     modifiedAt[relativePath] = DateTime.utc(2026, 1, 2);
     return SyncManifestEntry(
       relativePath: relativePath,
-      checksum: '$relativePath-${bytes.length}',
+      checksum: checksumBytes(bytes),
       modifiedAt: modifiedAt[relativePath]!,
       remoteFileId: remoteFileId ?? 'remote-$relativePath',
     );

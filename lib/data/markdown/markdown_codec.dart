@@ -6,6 +6,8 @@ import '../../services/storage/file_store.dart';
 class MarkdownCodec {
   const MarkdownCodec();
 
+  static const _bodySentinel = '<!-- organote:body -->';
+
   String encodeTemplate(Template template) {
     final buffer = StringBuffer()
       ..writeln('# ${template.name}')
@@ -95,13 +97,14 @@ class MarkdownCodec {
         if (entry.key == heading.omittedValueKey) {
           continue;
         }
-        buffer.writeln('- **${entry.key}**: ${entry.value}');
+        _writeRow(buffer, entry.key, entry.value);
       }
       buffer.writeln();
     }
     if (note.body.trim().isNotEmpty) {
       buffer
         ..writeln('## Body')
+        ..writeln(_bodySentinel)
         ..writeln(note.body.trimRight())
         ..writeln();
     }
@@ -125,29 +128,22 @@ class MarkdownCodec {
 
   Note decodeNote(String source, {String? sourcePath, DateTime? updatedAt}) {
     final title = _titleOf(source);
-    final separatorIndex = source.lastIndexOf('\n---');
-    final content = separatorIndex == -1
-        ? source
-        : source.substring(0, separatorIndex);
-    final metadataSource = separatorIndex == -1
-        ? ''
-        : source.substring(separatorIndex + 4);
+    final parts = _splitNoteSource(source);
+    final content = parts.content;
+    final metadataSource = parts.metadata;
     final metadataSection = _sectionsOf(metadataSource).firstWhere(
       (section) => _sameKey(section.title, 'metadata'),
       orElse: () => const _MarkdownSection(title: 'Metadata'),
     );
     final metadata = _rowMap(metadataSection.rows);
     final records = <NoteRecord>[];
-    var body = '';
+    final body = _bodyFromContent(content);
+    final recordContent = _contentBeforeBody(content);
     final hasTemplate =
         _emptyToNull(metadata['template id']) != null ||
         _emptyToNull(metadata['template name']) != null;
 
-    for (final section in _sectionsOf(content)) {
-      if (_sameKey(section.title, 'body')) {
-        body = section.rawBody.trim();
-        continue;
-      }
+    for (final section in _sectionsOf(recordContent)) {
       if (_sameKey(section.title, 'metadata')) {
         continue;
       }
@@ -185,6 +181,51 @@ class MarkdownCodec {
       createdAt: _parseDate(metadata['created at']),
       updatedAt: _parseDate(metadata['updated at']) ?? updatedAt,
     );
+  }
+
+  static _NoteSourceParts _splitNoteSource(String source) {
+    final lines = source.split('\n');
+    for (var i = lines.length - 1; i >= 0; i -= 1) {
+      if (lines[i].trim() == '---') {
+        return _NoteSourceParts(
+          content: lines.take(i).join('\n'),
+          metadata: lines.skip(i + 1).join('\n'),
+        );
+      }
+    }
+    return _NoteSourceParts(content: source, metadata: '');
+  }
+
+  static String _contentBeforeBody(String content) {
+    final lines = content.split('\n');
+    final bodyIndex = _bodyHeadingIndex(lines);
+    if (bodyIndex == null) {
+      return content;
+    }
+    return lines.take(bodyIndex).join('\n');
+  }
+
+  static String _bodyFromContent(String content) {
+    final lines = content.split('\n');
+    final bodyIndex = _bodyHeadingIndex(lines);
+    if (bodyIndex == null) {
+      return '';
+    }
+    final bodyLines = lines.skip(bodyIndex + 1).toList();
+    if (bodyLines.isNotEmpty && bodyLines.first.trim() == _bodySentinel) {
+      bodyLines.removeAt(0);
+    }
+    return bodyLines.join('\n').trim();
+  }
+
+  static int? _bodyHeadingIndex(List<String> lines) {
+    for (var i = 0; i < lines.length; i += 1) {
+      final title = _sectionHeadingTitle(lines[i]);
+      if (title != null && _sameKey(title, 'body')) {
+        return i;
+      }
+    }
+    return null;
   }
 
   static _RecordHeading _headingForRecord(Note note, NoteRecord record) {
@@ -244,13 +285,14 @@ class MarkdownCodec {
     String? title;
     final body = <String>[];
     for (final line in source.split('\n')) {
-      if (line.startsWith('## ')) {
+      final sectionTitle = _sectionHeadingTitle(line);
+      if (sectionTitle != null) {
         if (title != null) {
           sections.add(
             _MarkdownSection(title: title, lines: List<String>.from(body)),
           );
         }
-        title = line.substring(3).trim();
+        title = sectionTitle;
         body.clear();
         continue;
       }
@@ -264,6 +306,13 @@ class MarkdownCodec {
       );
     }
     return sections;
+  }
+
+  static String? _sectionHeadingTitle(String line) {
+    if (!line.startsWith('## ')) {
+      return null;
+    }
+    return line.substring(3).trim();
   }
 
   static Map<String, String> _rowMap(List<_MarkdownRow> rows) {
@@ -340,6 +389,18 @@ class MarkdownCodec {
       buffer.writeln('- **$key**: $value');
     }
   }
+
+  static void _writeRow(StringBuffer buffer, String key, Object? value) {
+    final normalizedValue = (value ?? '')
+        .toString()
+        .replaceAll('\r\n', '\n')
+        .replaceAll('\r', '\n');
+    final lines = normalizedValue.split('\n');
+    buffer.writeln('- **$key**: ${lines.first}');
+    for (final line in lines.skip(1)) {
+      buffer.writeln('  $line');
+    }
+  }
 }
 
 class _MarkdownSection {
@@ -351,7 +412,7 @@ class _MarkdownSection {
   String get rawBody => lines.join('\n');
 
   List<_MarkdownRow> get rows {
-    return lines.map(_MarkdownRow.tryParse).whereType<_MarkdownRow>().toList();
+    return _MarkdownRow.parseLines(lines);
   }
 }
 
@@ -360,6 +421,41 @@ class _MarkdownRow {
 
   final String key;
   final String value;
+
+  static List<_MarkdownRow> parseLines(List<String> lines) {
+    final rows = <_MarkdownRow>[];
+    _MarkdownRow? current;
+    final continuationLines = <String>[];
+
+    void flushCurrent() {
+      final row = current;
+      if (row == null) {
+        return;
+      }
+      rows.add(
+        _MarkdownRow(
+          row.key,
+          <String>[row.value, ...continuationLines].join('\n').trim(),
+        ),
+      );
+      current = null;
+      continuationLines.clear();
+    }
+
+    for (final line in lines) {
+      if (current != null && line.startsWith('  ')) {
+        continuationLines.add(line.substring(2));
+        continue;
+      }
+      final parsed = tryParse(line);
+      if (parsed != null) {
+        flushCurrent();
+        current = parsed;
+      }
+    }
+    flushCurrent();
+    return rows;
+  }
 
   static _MarkdownRow? tryParse(String line) {
     final match = RegExp(
@@ -378,6 +474,13 @@ class _MarkdownRow {
     }
     return _MarkdownRow(match.group(1)!.trim(), match.group(2)!.trim());
   }
+}
+
+class _NoteSourceParts {
+  const _NoteSourceParts({required this.content, required this.metadata});
+
+  final String content;
+  final String metadata;
 }
 
 class _RecordHeading {
