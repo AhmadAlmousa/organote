@@ -436,6 +436,13 @@ Implemented in this pass:
   legacy flattened files into their logical folders when encountered.
 - Sync now includes `trash/` and `.organote/` metadata while excluding the
   device-local sync ledger and diagnostics log.
+- Follow-up after user retest: Android now prefers the Web OAuth client ID
+  (`GOOGLE_SIGN_IN_WEB_CLIENT_ID` or `GOOGLE_SIGN_IN_CLIENT_ID`) for native
+  `serverClientId` and uses `GOOGLE_SIGN_IN_SERVER_CLIENT_ID` only as a fallback,
+  because the local `.env` had a different value there.
+- Follow-up after user retest: `web/index.html` unregisters existing service
+  workers before loading Flutter so browsers stop serving a stale pre-fix bundle
+  with the old Google-rendered sign-in button.
 
 ---
 
@@ -459,3 +466,125 @@ Implemented in this pass:
   `google_sign_in_web` has no direct importer. It is still pulled in as
   `google_sign_in`'s endorsed web platform implementation, so the explicit
   `google_sign_in_web: ^1.1.3` line is now optional. Left it in place.
+
+---
+
+## Audit follow-up plan (2026-06-10) — joint frontend/backend execution
+
+An external expert audit (`audit.md`) found three confirmed data-corruption
+bugs in backend-owned code plus several High/Medium items. This section is the
+agreed execution plan. Sequencing principle from the audit: **safety net →
+critical correctness → high-leverage → polish.** Backend items below reference
+the audit's task numbers; please respond in `back_to_frontend.md` with
+acceptance/sequencing changes before starting Phase B.
+
+### Phase A — Safety net (do first; blocks all codec/sync edits)
+
+- **A0 (shared, immediate)** — Commit the in-flight Drive-mirror working-tree
+  diff (~836 lines, audit 0.2 / Open Q6). Per the coordination log it is
+  finished (implemented 2026-06-02, follow-ups verified, analyze clean, full
+  suite passing), so it gets a milestone commit *before* Milestone-1 work
+  touches the same sync files. `audit.md` and the stray screenshot are not part
+  of that milestone; commit `audit.md` separately, delete/ignore the
+  screenshot.
+- **A1 (frontend-owned)** — CI workflow (audit 0.1). Frontend will add
+  `.github/workflows/ci.yml`: checkout → `cp .env.example .env` →
+  `flutter pub get` → `flutter analyze --fatal-infos` → `flutter test`, with
+  pub cache caching. This is repo infra, not `lib/` code, so frontend takes it
+  to keep backend free for the codec.
+- **A2 (backend)** — Codec round-trip characterization tests (audit 0.3):
+  property-style `decode(encode(note)) == note` over generated notes covering
+  multiline values, `##`/`---` in bodies, unicode, empties. Currently-failing
+  cases land as `skip: true` with bug refs so the invariant is documented
+  before the fix.
+- **A3 (backend)** — Reconciler full 8-state presence matrix test (audit 0.4),
+  with the both-exist-no-ledger case initially skipped and referenced.
+
+### Phase B — Critical correctness (backend-heavy)
+
+- **B1 (backend)** — Fix CRITICAL-1 + CRITICAL-2 together as one format
+  revision (audit 1.1/1.2): multiline record values are truncated to their
+  first line, and `## ` headings in bodies decode into phantom records — both
+  then destroyed by the editor's 2 s autosave. Suggested approach is in the
+  audit's implementation sketch (indented continuation lines + body
+  sentinel/escaping), with a **lenient legacy decoder**. Frontend's stance on
+  Open Q3 (migration appetite): *no migration pass* — new writes use the new
+  format, old files decode leniently. Real libraries are small enough.
+- **B2 (backend)** — Reconciler state 7 (audit 1.3): both sides exist, no
+  ledger → currently **zero actions emitted** (a second device's first sync
+  silently never syncs overlapping files). Equal checksums → adopt-ledger
+  action; differing → conflict action. Note the audit's gotcha: verify
+  `GoogleDriveRemoteFileProvider.listManifest` populates remote `md5Checksum`,
+  and route new conflict downloads through `previewRemoteOverwrites` so the
+  existing frontend warning dialog covers them.
+- **B3 (backend, contract change — frontend pairs)** — Sync error handling
+  (audit 1.4): wrap `_syncNowLocked`'s plan build + action loop, emit a
+  terminal **`SyncPhase.error`** status (today a thrown action leaves the
+  stream stuck on `syncing` forever), and write the ledger for
+  already-completed actions. Please post the final `SyncStatus`/`SyncPhase`
+  shape in `back_to_frontend.md`; frontend item FE1 below consumes it.
+- **B4 (backend)** — Directory move in the web JS bridge (audit 1.5):
+  `organoteFs.move` only handles files, so category move/delete should throw
+  `TypeMismatchError` on web and is non-atomic on partial failure. Recursive
+  copy+delete or `handle.move()` where available. Frontend will run the manual
+  Chrome verification pass (FE4) once it lands.
+- **B5 (backend + user)** — Rotate the committed OAuth Web client ID and
+  replace `web/index.html` with a placeholder + build-time injection; scrub
+  the real domains from README (audit 1.6 / MEDIUM-3). Needs the user in
+  Google Cloud Console for the rotation itself.
+
+### Phase C — High-leverage (backend)
+
+- **C1** — Conflict-loser preservation (audit 2.1): write
+  `<name>.conflict-<timestamp>.md` before any last-write-wins overwrite.
+  Frontend's stance on Open Q4: LWW + conflict copies is acceptable; no
+  interactive resolution UI planned, so don't over-invest in warning flows.
+  Frontend item FE2 will make conflict copies presentable in the library.
+- **C2** — FileStore contract-test suite run against `MemoryFileStore` and
+  `NativeFileStore` including directory-move (audit 2.2) — this is what lets
+  HIGH-2-class parity gaps surface in tests instead of in Chrome.
+- **C3** — Decouple build from the `.env` asset (audit 2.3) so a fresh clone
+  builds with zero manual steps; update the CI step from A1 accordingly.
+- **C4** — Parse the trash index as JSON, not regex (audit 2.4).
+
+### Frontend-owned items (tracked here; no backend action needed)
+
+- **FE1** — Render the new terminal error state from B3 in Settings → Sync
+  (status pill + message, recover to idle on next action) and anywhere the
+  sync badge appears in `WebShell`. Widget coverage in
+  `test/ui/settings_screen_test.dart`. *Depends on B3.*
+- **FE2** — Conflict-copy UX: `*.conflict-<ts>.md` files will appear as
+  library notes after C1. Frontend will make sure NoteCard/viewer render them
+  sanely (compact "Conflict copy" pill, easy delete), no new screen.
+  *Depends on C1.*
+- **FE3** — Confirm the existing `SyncOverwriteWarning` dialog presents B2's
+  new conflict-download entries correctly (wording: "Conflict" pill where the
+  newer side is ambiguous). *Depends on B2.*
+- **FE4** — Manual web verification pass for category move/delete/trash-restore
+  on Chrome after B4.
+- **FE5 (polish, unsequenced)** — Split `settings_screen.dart` and
+  `web_shell.dart` into per-pane files (audit 3.4 partial); repo hygiene
+  (audit 3.3): remove tmux logs/screenshot, gitignore `*.iml`, parameterize
+  the flutter path in README, add LICENSE.
+
+### Phase D — Polish (deferred; pick up after zero Critical/High)
+
+- 3.1 incremental snapshot updates instead of full `reload()` — defer until a
+  real library size hurts.
+- 3.2 `scheduleFocusedSync` is dead code — frontend recommendation (Open Q2):
+  **delete it**; background focus-sync isn't planned, and if it ever is it
+  must come after B3's error handling anyway.
+- 3.5 trash retention — frontend recommendation (Open Q1): keep syncing
+  `trash/` (cross-device trash is good UX), add a count-capped purge later as
+  a product decision.
+
+### Open-question defaults (user can override any of these)
+
+| Audit Q | Default adopted in this plan |
+|---|---|
+| Q1 trash sync | Keep syncing; retention later (D/3.5) |
+| Q2 `scheduleFocusedSync` | Delete (D/3.2) |
+| Q3 format migration | Lenient decode, no migration pass (B1) |
+| Q4 conflict policy | LWW + conflict copies, no interactive UI (C1/FE2) |
+| Q5 web status | First-class — user actively deploys web, so B4/C2 are release-blocking |
+| Q6 uncommitted diff | Finished work → milestone commit now (A0) |

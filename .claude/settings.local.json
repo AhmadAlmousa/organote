@@ -12,7 +12,25 @@
       "Bash(git *)",
       "Bash(flutter64)",
       "Bash(flutter build *)",
-      "Bash(dart format *)"
+      "Bash(dart format *)",
+      "Bash(dart analyze *)",
+      "Bash(curl -sS -I -m 15 http://dev.almou.sa/)",
+      "Bash(curl -sS -I -m 15 https://dev.almou.sa/)",
+      "Bash(curl -sS -I -m 15 https://dev.almou.sa/index.html)",
+      "Bash(curl -sS -I -m 15 https://dev.almou.sa/main.dart.js)",
+      "Bash(curl -sS -D - -m 15 -o /tmp/devroot.html https://dev.almou.sa/)",
+      "Bash(curl -sS -m 20 https://pub.dev/api/packages/google_sign_in_web)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('latest:', d['latest']['version']\\); vers=[v['version'] for v in d.get\\('versions',[]\\)][-12:]; print\\('recent versions:', ', '.join\\(vers\\)\\)\")",
+      "Bash(curl -sS -m 20 https://pub.dev/api/packages/google_identity_services_web)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('latest:', d['latest']['version']\\)\")",
+      "Bash(grep -vE \"^\\\\s*$\")",
+      "Bash(echo \"exit: $?\")",
+      "Read(//tmp/organote_audit/**)",
+      "Bash(/home/ahmad/flutter/bin/dart run *)",
+      "Bash(/home/ahmad/flutter/bin/flutter analyze *)",
+      "Bash(/home/ahmad/flutter/bin/flutter test *)",
+      "Bash(echo \"no-ci: $?\")",
+      "Bash(/home/ahmad/flutter/bin/flutter pub *)"
     ]
   }
 }
